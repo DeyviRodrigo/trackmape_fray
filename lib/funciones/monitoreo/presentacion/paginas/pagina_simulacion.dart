@@ -30,7 +30,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
   Map<String, Marker> marcadoresActivos = {};
   Map<String, List<ll.LatLng>> rastrosCola = {};
 
-  static const Map<double, int> _velocidades = {
+  static final Map<double, int> _velocidades = {
     1.0: 800,
     2.0: 400,
     4.0: 200,
