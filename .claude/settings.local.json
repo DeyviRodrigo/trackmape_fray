@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(findstr:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(where:*)",
+      "Bash(cmd /c \"where flutter\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(cmd /c \"gh pr create --title \"\"feat: Simulacion interactiva con control de fecha, linea de tiempo y velocidades\"\" --body \"\"## Resumen\\\\n\\\\n- Reemplaza la fecha hardcodeada 2026-01-15 por un selector de calendario interactivo \\(tap en el titulo del AppBar\\)\\\\n- Agrega una linea de tiempo deslizable \\(Slider\\) con etiquetas 00:00 / 23:59\\\\n- Controles de reproduccion: Retroceder, Play/Pausa, Avanzar \\(+-20 puntos\\)\\\\n- Menu Velocidad con opciones: 1x \\(800ms\\), 2x \\(400ms\\), 4x \\(200ms\\), 10x \\(80ms\\)\\\\n- Indicador de hora actual de simulacion en tiempo real \\(HH:mm:ss\\)\\\\n- Loading overlay con spinner naranja al cargar datos de nueva fecha\\\\n- Contador de progreso visible: N / Total registros\\\\n\\\\n## Plan de prueba\\\\n- [ ] Navegar a pestana Transcurso Simulado\\\\n- [ ] Presionar Play y verificar animacion de vehiculos\\\\n- [ ] Seleccionar velocidad 10x y verificar aceleracion\\\\n- [ ] Arrastrar slider y verificar salto de hora\\\\n- [ ] Cambiar fecha desde el titulo del AppBar\\\\n- [ ] Verificar botones de avance y retroceso \\(+-20 puntos\\)\\\\n\\\\nGenerated with Claude Code\"\" --base main\")"
+    ]
+  }
+}
