@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: remove default Flutter counter widget test\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(cd:*)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)"
+    ]
+  }
+}
