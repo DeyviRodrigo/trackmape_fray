@@ -37,7 +37,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
 
     switch (_indiceActual) {
       case 0:
-        tituloHeader = "TRACKING EN VIVO";
+        tituloHeader = "TRANSMISION EN VIVO";
         break;
       case 1:
         tituloHeader = "HISTORIAL DE RUTAS";
@@ -61,7 +61,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
         title: Text(
           tituloHeader,
           style: const TextStyle(
-            color: Colors.orange,
+            color: Colors.blue,
             fontWeight: FontWeight.bold,
             fontSize: 18,
             letterSpacing: 1.2,
@@ -70,8 +70,8 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
         centerTitle: true,
         backgroundColor: Colors.black,
         elevation: 4,
-        shadowColor: Colors.orange.withOpacity(0.2),
-        iconTheme: const IconThemeData(color: Colors.orange),
+        shadowColor: Colors.blue.withOpacity(0.2),
+        iconTheme: const IconThemeData(color: Colors.blue),
       ),
 
       drawer: _crearMenuLateral(),
@@ -102,7 +102,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
           },
 
           backgroundColor: const Color(0xFF1A1A1A),
-          selectedItemColor: Colors.orange,
+          selectedItemColor: Colors.blue,
           unselectedItemColor: Colors.white54,
           selectedFontSize: 12,
           unselectedFontSize: 12,
@@ -139,19 +139,19 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
             decoration: const BoxDecoration(
               color: Colors.black,
               border: Border(
-                bottom: BorderSide(color: Colors.orange, width: 2),
+                bottom: BorderSide(color: Colors.blue, width: 2),
               ),
             ),
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.map, color: Colors.orange, size: 40),
+                  const Icon(Icons.map, color: Colors.blue, size: 40),
                   const SizedBox(height: 10),
                   const Text(
                     "TrackMAPE",
                     style: TextStyle(
-                      color: Colors.orange,
+                      color: Colors.blue,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                     ),
@@ -182,7 +182,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
 
           _itemMenu(Icons.directions_car,
               "Panel del Conductor", 4,
-              color: Colors.orangeAccent),
+              color: Colors.blueAccent),
 
           const Spacer(),
           const Divider(color: Colors.white24),
@@ -201,11 +201,11 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
 
     return ListTile(
       leading: Icon(icono,
-          color: seleccionado ? Colors.orange : color),
+          color: seleccionado ? Colors.blue : color),
       title: Text(
         titulo,
         style: TextStyle(
-          color: seleccionado ? Colors.orange : color,
+          color: seleccionado ? Colors.blue : color,
           fontWeight:
           seleccionado ? FontWeight.bold : FontWeight.w500,
         ),

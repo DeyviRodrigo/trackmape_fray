@@ -97,7 +97,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
   Widget build(BuildContext context) {
     return FlutterMap(
       options: const MapOptions(
-        initialCenter: ll.LatLng(-14.6792, -69.4866),
+        initialCenter: ll.LatLng(-15.488288, -70.149287),
         initialZoom: 15,
       ),
       children: [
