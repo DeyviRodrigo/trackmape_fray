@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_map_matching.dart';
 import 'dart:math' as math; // Importación con alias para corregir el error de asin, sin, cos
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 
@@ -10,7 +11,7 @@ class PaginaStream extends StatefulWidget {
   @override
   State<PaginaStream> createState() => _PaginaStreamState();
 }
-
+final GraphhopperMapMatching _matcher = GraphhopperMapMatching();
 class _PaginaStreamState extends State<PaginaStream> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
 
@@ -120,11 +121,17 @@ class _PaginaStreamState extends State<PaginaStream> {
                 children: [
                   TileLayer(urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'),
                   PolylineLayer(
-                    polylines: rastros.entries.map((e) => Polyline(
-                      points: e.value,
-                      color: Colors.greenAccent.withOpacity(0.6),
-                      strokeWidth: 4,
-                    )).toList(),
+                    polylines: rastros.entries.map((e) {
+
+                      final puntosCorregidos = _matcher.ajustarRutaSync(e.value);
+
+                      return Polyline(
+                        points: puntosCorregidos,
+                        color: Colors.greenAccent.withOpacity(0.6),
+                        strokeWidth: 4,
+                      );
+
+                    }).toList(),
                   ),
                   MarkerLayer(markers: marcadoresVisibles.values.toList()),
                 ],
