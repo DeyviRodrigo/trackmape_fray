@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_map_matching.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/core/utilidades/calculadora_geodesica.dart';
+import 'dart:math' as math;
 
 class PaginaHistorico extends StatefulWidget {
   const PaginaHistorico({super.key});
@@ -24,6 +25,17 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
   double velocidadCalc = 0.0;
   String tiempoReporte = "";
+
+  // ============================================
+  // ⚙️ CONFIGURACIÓN DE FILTROS
+  // ============================================
+  // Distancia máxima permitida entre 2 puntos consecutivos (metros)
+  // Si la distancia es mayor, se considera un salto falso
+  static const double _distanciaMaximaMetros = 500.0;
+
+  // Velocidad máxima permitida (km/h)
+  // Si la velocidad calculada supera esto, es un dato falso
+  static const double _velocidadMaximaKmh = 150.0;
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +88,10 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
               final trayectoriaRaw =
               snapshot.data![1] as List<Map<String, dynamic>>;
 
-              List<Map<String, dynamic>> trayectoria = List.from(trayectoriaRaw);
+              // ============================================
+              // 🧹 FILTRAR DATOS INVÁLIDOS
+              // ============================================
+              List<Map<String, dynamic>> trayectoria = _filtrarDatosValidos(trayectoriaRaw);
 
               trayectoria.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
 
@@ -110,7 +125,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.8),
+                color: Colors.black.withOpacity(0.8),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.orange),
               ),
@@ -126,6 +141,54 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
         ],
       ),
     );
+  }
+
+  // ============================================
+  // 🧹 FILTRAR DATOS INVÁLIDOS
+  // ============================================
+  List<Map<String, dynamic>> _filtrarDatosValidos(List<Map<String, dynamic>> datos) {
+
+    List<Map<String, dynamic>> datosFiltrados = [];
+
+    for (var punto in datos) {
+      final lat = (punto['lat_grados'] as num?)?.toDouble() ?? 0.0;
+      final lon = (punto['lon_grados'] as num?)?.toDouble() ?? 0.0;
+
+      // ============================================
+      // ❌ FILTRO 1: Coordenadas inválidas
+      // ============================================
+      // Descartar si lat/lon son 0, null, o fuera de rango
+      if (lat == 0.0 || lon == 0.0) continue;
+      if (lat < -90 || lat > 90) continue;
+      if (lon < -180 || lon > 180) continue;
+
+      // ============================================
+      // ❌ FILTRO 2: Coordenadas muy lejos de Perú
+      // ============================================
+      // Tu zona de trabajo está aproximadamente en:
+      // Lat: -18 a -12 (sur de Perú)
+      // Lon: -72 a -68 (departamento de Puno)
+      // Si está muy fuera de este rango, es dato falso
+      if (lat < -20 || lat > -10) continue;
+      if (lon < -75 || lon > -65) continue;
+
+      datosFiltrados.add(punto);
+    }
+
+    return datosFiltrados;
+  }
+
+  // ============================================
+  // 📏 CALCULAR DISTANCIA ENTRE 2 PUNTOS
+  // ============================================
+  double _calcularDistanciaMetros(ll.LatLng p1, ll.LatLng p2) {
+    const double p = 0.017453292519943295;
+    final double a = 0.5 -
+        math.cos((p2.latitude - p1.latitude) * p) / 2 +
+        math.cos(p1.latitude * p) * math.cos(p2.latitude * p) *
+            (1 - math.cos((p2.longitude - p1.longitude) * p)) / 2;
+
+    return 12742 * math.asin(math.sqrt(a)) * 1000;
   }
 
   void _seleccionarPunto(
@@ -215,7 +278,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
               children: [
                 _dato("Lat (X)", puntoSeleccionado!['lat_grados'].toString()),
                 _dato("Lon (Y)", puntoSeleccionado!['lon_grados'].toString()),
-                _dato("Alt (Z)", "${puntoSeleccionado!['alt_msnm']}m"),
+                _dato("Alt (Z)", "${puntoSeleccionado!['alt_msnm'] ?? 'N/A'}m"),
               ],
             ),
 
@@ -272,7 +335,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.8),
+                  color: Colors.black.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(color: Colors.orange, width: 0.5),
                 ),
@@ -302,18 +365,72 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
     Map<String, List<ll.LatLng>> rutasPorEquipo = {};
 
+    // Agrupar por equipo
+    Map<String, List<Map<String, dynamic>>> datosPorEquipo = {};
     for (var p in pos) {
-
       String id = p['fk_emisor'].toString();
+      datosPorEquipo.putIfAbsent(id, () => []);
+      datosPorEquipo[id]!.add(p);
+    }
 
-      rutasPorEquipo.putIfAbsent(id, () => []);
+    // Procesar cada equipo y filtrar saltos imposibles
+    for (var entry in datosPorEquipo.entries) {
+      final id = entry.key;
+      final puntos = entry.value;
 
-      rutasPorEquipo[id]!.add(
-        ll.LatLng(
-          (p['lat_grados'] as num).toDouble(),
-          (p['lon_grados'] as num).toDouble(),
-        ),
-      );
+      // Ordenar por tiempo
+      puntos.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
+
+      List<ll.LatLng> rutaFiltrada = [];
+      ll.LatLng? puntoAnterior;
+      DateTime? tiempoAnterior;
+
+      for (var p in puntos) {
+        final lat = (p['lat_grados'] as num).toDouble();
+        final lon = (p['lon_grados'] as num).toDouble();
+        final tiempo = DateTime.parse(p['tiempo']);
+        final puntoActual = ll.LatLng(lat, lon);
+
+        if (puntoAnterior != null && tiempoAnterior != null) {
+          // Calcular distancia y tiempo entre puntos
+          final distancia = _calcularDistanciaMetros(puntoAnterior, puntoActual);
+          final segundos = tiempo.difference(tiempoAnterior).inSeconds.abs();
+
+          // Calcular velocidad (evitar división por 0)
+          final velocidad = segundos > 0 ? (distancia / segundos) * 3.6 : 0.0;
+
+          // ============================================
+          // ❌ FILTRO: Salto imposible
+          // ============================================
+          // Si la distancia es mayor a 500m O la velocidad > 150 km/h
+          // consideramos que es un dato falso y NO lo agregamos
+          if (distancia > _distanciaMaximaMetros || velocidad > _velocidadMaximaKmh) {
+            // Salto detectado - no conectar con línea
+            // Pero sí agregar el punto actual como inicio de nuevo segmento
+            if (rutaFiltrada.isNotEmpty) {
+              // Guardar ruta actual y empezar nueva
+              rutasPorEquipo.putIfAbsent(id, () => []);
+              rutasPorEquipo[id]!.addAll(rutaFiltrada);
+            }
+            rutaFiltrada = [puntoActual];
+          } else {
+            // Punto válido - agregar a la ruta
+            rutaFiltrada.add(puntoActual);
+          }
+        } else {
+          // Primer punto
+          rutaFiltrada.add(puntoActual);
+        }
+
+        puntoAnterior = puntoActual;
+        tiempoAnterior = tiempo;
+      }
+
+      // Agregar última ruta
+      if (rutaFiltrada.isNotEmpty) {
+        rutasPorEquipo.putIfAbsent(id, () => []);
+        rutasPorEquipo[id]!.addAll(rutaFiltrada);
+      }
     }
 
     return rutasPorEquipo.entries.map((e) {
@@ -322,8 +439,8 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
       return Polyline(
         points: puntosCorregidos,
-        color: Colors.orange.withValues(alpha: 0.4),
-        strokeWidth: 3,
+        color: Colors.orange.withOpacity(0.7),
+        strokeWidth: 4,
       );
 
     }).toList();

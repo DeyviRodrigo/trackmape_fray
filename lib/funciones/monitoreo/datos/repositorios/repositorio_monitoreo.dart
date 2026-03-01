@@ -5,6 +5,14 @@ class RepositorioMonitoreo {
   final _supabase = Supabase.instance.client;
 
   // ============================================================
+  // ⚠️ LÍMITE MÁXIMO DE REGISTROS POR CONSULTA
+  // Supabase tiene un límite por defecto de 1000 filas.
+  // Aquí lo aumentamos para obtener todos los datos del día.
+  // Puedes cambiar este valor si necesitas más.
+  // ============================================================
+  static const int _limiteMaximoRegistros = 60000;
+
+  // ============================================================
   // --- SECCIÓN 1: GESTIÓN DE OPERADORES / EQUIPOS ---
   // ============================================================
 
@@ -69,7 +77,8 @@ class RepositorioMonitoreo {
       final respuesta = await _supabase
           .from('posiciones')
           .select()
-          .order('tiempo', ascending: false);
+          .order('tiempo', ascending: false)
+          .limit(_limiteMaximoRegistros);
 
       final listaUnica = <String, Map<String, dynamic>>{};
       for (var item in (respuesta as List)) {
@@ -94,8 +103,13 @@ class RepositorioMonitoreo {
         .order('tiempo', ascending: false)
         .limit(50);
   }
-// En repositorio_monitoreo.dart
 
+  // ============================================================
+  // --- SECCIÓN 3: SIMULACIÓN ---
+  // ============================================================
+
+  /// Obtiene TODOS los datos de un día para la simulación
+  /// Usa límite alto para superar el default de 1000 de Supabase
   Future<List<Map<String, dynamic>>> obtenerDatosParaSimulacion(DateTime fecha) async {
     final inicio = DateTime(fecha.year, fecha.month, fecha.day, 0, 0, 0).toIso8601String();
     final fin = DateTime(fecha.year, fecha.month, fecha.day, 23, 59, 59).toIso8601String();
@@ -106,14 +120,17 @@ class RepositorioMonitoreo {
         .gte('tiempo', inicio)
         .lte('tiempo', fin)
         .order('tiempo', ascending: true)
-        .limit(500); // Limitamos para no saturar la prueba
+        .limit(_limiteMaximoRegistros);  // ← LÍMITE ALTO PARA OBTENER TODO
+
     return List<Map<String, dynamic>>.from(res);
   }
+
   // ============================================================
-  // --- SECCIÓN 3: CONSULTA HISTÓRICA ---
+  // --- SECCIÓN 4: CONSULTA HISTÓRICA ---
   // ============================================================
 
   /// Obtiene trayectorias por una fecha específica (00:00 a 23:59)
+  /// Usa límite alto para superar el default de 1000 de Supabase
   Future<List<Map<String, dynamic>>> obtenerTrayectoriaPorFecha(DateTime fecha) async {
     try {
       final inicioDia = DateTime(fecha.year, fecha.month, fecha.day, 0, 0, 0).toIso8601String();
@@ -124,7 +141,8 @@ class RepositorioMonitoreo {
           .select()
           .gte('tiempo', inicioDia)
           .lte('tiempo', finDia)
-          .order('tiempo', ascending: true);
+          .order('tiempo', ascending: true)
+          .limit(_limiteMaximoRegistros);  // ← LÍMITE ALTO PARA OBTENER TODO
 
       return List<Map<String, dynamic>>.from(res);
     } catch (e) {

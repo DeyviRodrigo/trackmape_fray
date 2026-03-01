@@ -287,7 +287,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
               Expanded(
                 child: FlutterMap(
                   options: const MapOptions(
-                    initialCenter: ll.LatLng(-14.6792, -69.4866),
+                    initialCenter: ll.LatLng(-15.488405, -70.150497),
                     initialZoom: 15,
                   ),
                   children: [
