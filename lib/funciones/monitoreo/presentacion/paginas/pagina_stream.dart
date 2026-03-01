@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
-import 'dart:math' as math; // Importación con alias para corregir el error de asin, sin, cos
+import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_map_matching.dart';
+import 'dart:math' as math;
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 
 class PaginaStream extends StatefulWidget {
@@ -14,6 +15,11 @@ class PaginaStream extends StatefulWidget {
 class _PaginaStreamState extends State<PaginaStream> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
 
+  // ============================================
+  // 🗺️ GRAPHHOPPER MAP MATCHING
+  // ============================================
+  final GraphhopperMapMatching _mapMatching = GraphhopperMapMatching();
+
   // Información de equipos y estados de telemetría
   Map<String, Map<String, dynamic>> equiposInfo = {};
   Map<String, ll.LatLng> _posicionAnterior = {};
@@ -21,10 +27,19 @@ class _PaginaStreamState extends State<PaginaStream> {
   Map<String, double> _velocidades = {};
   Map<String, double> _distanciasAcumuladas = {};
 
+  // Rastros sin corregir (para mostrar mientras se procesa)
+  Map<String, List<ll.LatLng>> _rastrosOriginales = {};
+
   @override
   void initState() {
     super.initState();
     _preCargarDatos();
+  }
+
+  @override
+  void dispose() {
+    _mapMatching.limpiarTodo();
+    super.dispose();
   }
 
   // Carga inicial de nombres de equipos y estados de habilitación
@@ -58,7 +73,6 @@ class _PaginaStreamState extends State<PaginaStream> {
         stream: _repositorio.obtenerTrayectoriaStream(),
         builder: (context, snapshot) {
           Map<String, Marker> marcadoresVisibles = {};
-          Map<String, List<ll.LatLng>> rastros = {};
           final ahora = DateTime.now();
 
           if (snapshot.hasData) {
@@ -93,6 +107,18 @@ class _PaginaStreamState extends State<PaginaStream> {
               _posicionAnterior[id] = posActual;
               _tiempoAnterior[id] = tiempoActual;
 
+              // ============================================
+              // 📍 AGREGAR PUNTO AL MAP MATCHING
+              // ============================================
+              _mapMatching.agregarPunto(id, posActual);
+
+              // También mantener rastro original para visualización inmediata
+              _rastrosOriginales.putIfAbsent(id, () => []);
+              _rastrosOriginales[id]!.add(posActual);
+              if (_rastrosOriginales[id]!.length > 50) {
+                _rastrosOriginales[id]!.removeAt(0);
+              }
+
               // --- CREACIÓN DE MARCADORES ---
               bool esPuntoActivo = ahora.difference(tiempoActual).inSeconds.abs() <= 60;
 
@@ -102,11 +128,32 @@ class _PaginaStreamState extends State<PaginaStream> {
                 width: 80, height: 80,
                 child: _buildIconoOperador(id, esPuntoActivo ? Colors.greenAccent : Colors.grey),
               );
+            }
+          }
 
-              // --- GESTIÓN DE LA COLA DE RASTRO (30 segundos aprox) ---
-              rastros.putIfAbsent(id, () => []);
-              rastros[id]!.add(posActual);
-              if (rastros[id]!.length > 20) rastros[id]!.removeAt(0);
+          // ============================================
+          // 🗺️ CONSTRUIR POLILÍNEAS
+          // ============================================
+          List<Polyline> polylines = [];
+
+          for (final entry in _rastrosOriginales.entries) {
+            final id = entry.key;
+
+            // Obtener ruta corregida si existe, sino usar original
+            List<ll.LatLng> puntosParaMostrar = _mapMatching.obtenerRutaCorregida(id);
+
+            if (puntosParaMostrar.isEmpty) {
+              puntosParaMostrar = entry.value;
+            }
+
+            if (puntosParaMostrar.length >= 2) {
+              polylines.add(
+                Polyline(
+                  points: puntosParaMostrar,
+                  color: Colors.greenAccent.withOpacity(0.8),
+                  strokeWidth: 5,
+                ),
+              );
             }
           }
 
@@ -118,14 +165,23 @@ class _PaginaStreamState extends State<PaginaStream> {
                   initialZoom: 16,
                 ),
                 children: [
-                  TileLayer(urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'),
-                  PolylineLayer(
-                    polylines: rastros.entries.map((e) => Polyline(
-                      points: e.value,
-                      color: Colors.greenAccent.withOpacity(0.6),
-                      strokeWidth: 4,
-                    )).toList(),
+                  // ============================================
+                  // 🗺️ CAPA 1: MAPA SATELITAL (FONDO)
+                  // ============================================
+                  TileLayer(
+                    urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                   ),
+
+                  // ============================================
+                  // 📍 CAPA 2: POLILÍNEAS (RUTAS)
+                  // ============================================
+                  PolylineLayer(
+                    polylines: polylines,
+                  ),
+
+                  // ============================================
+                  // 🚗 CAPA 3: MARCADORES (VEHÍCULOS)
+                  // ============================================
                   MarkerLayer(markers: marcadoresVisibles.values.toList()),
                 ],
               ),
@@ -133,12 +189,43 @@ class _PaginaStreamState extends State<PaginaStream> {
               // --- PANEL INFERIOR DE DATOS EN TIEMPO REAL ---
               Positioned(
                 bottom: 20, left: 0, right: 0,
-                child: Container(
+                child: SizedBox(
                   height: 100,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 15),
                     children: marcadoresVisibles.keys.map((id) => _buildCardKPI(id)).toList(),
+                  ),
+                ),
+              ),
+
+              // ============================================
+              // 📊 INDICADOR DE GRAPHHOPPER (opcional)
+              // ============================================
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.route, color: Colors.greenAccent, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'GraphHopper',
+                        style: TextStyle(
+                          color: Colors.greenAccent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -163,7 +250,7 @@ class _PaginaStreamState extends State<PaginaStream> {
         color: const Color(0xFF121212).withOpacity(0.9),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: vel > 40 ? Colors.redAccent : Colors.orange, width: 2),
-        boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 4)],
+        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
