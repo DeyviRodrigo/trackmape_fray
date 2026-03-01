@@ -25,7 +25,7 @@ class _PaginaMapaState extends State<PaginaMapa> {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.orange,
-        child: const Icon(Icons.calendar_month, color: Colors.black),
+        child: const Icon(Icons.calendar_month, color: Color(0xFF06329C)),
         onPressed: () async {
           DateTime? picker = await showDatePicker(
             context: context,
@@ -129,7 +129,7 @@ class _PaginaMapaState extends State<PaginaMapa> {
         margin: const EdgeInsets.all(20),
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: const Color(0xFF06329C),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.orange, width: 2),
         ),

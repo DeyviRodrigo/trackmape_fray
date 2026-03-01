@@ -191,7 +191,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
           data: ThemeData.dark().copyWith(
             colorScheme: const ColorScheme.dark(
               primary: Colors.orange,
-              onPrimary: Colors.black,
+              onPrimary: Color(0xFF06329C),
               surface: Color(0xFF1A1A1A),
               onSurface: Colors.white,
             ),
@@ -258,7 +258,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
         : 0.0;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Color(0xFF06329C),
       appBar: AppBar(
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('Simulación en tiempo real'),
@@ -357,7 +357,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
               const SizedBox(width: 8),
               DropdownButton<double>(
                 value: _velocidad,
-                dropdownColor: const Color(0xFF1A1A1A),
+                dropdownColor: const Color(0xFF06329C),
                 style: const TextStyle(color: Colors.white),
                 items: const [
                   DropdownMenuItem(value: 1.0, child: Text('1x')),
@@ -437,7 +437,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           decoration: BoxDecoration(
-            color: Colors.black,
+            color: Color(0xFF06329C),
             borderRadius: BorderRadius.circular(4),
             border: Border.all(color: Colors.greenAccent),
           ),

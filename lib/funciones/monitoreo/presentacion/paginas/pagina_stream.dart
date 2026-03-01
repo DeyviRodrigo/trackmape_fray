@@ -32,15 +32,21 @@ class _PaginaStreamState extends State<PaginaStream> {
   // ============================================
   Map<String, ll.LatLng> _ultimaPosicion = {};
   Map<String, DateTime> _ultimoTiempo = {};
-  Map<String, bool> _equipoActivo = {};  // true = verde, false = gris
+  Map<String, bool> _equipoActivo = {};
 
-  // Rastros SOLO para equipos activos (en movimiento)
+  // Rastros SOLO para equipos activos
   Map<String, List<ll.LatLng>> _rastrosActivos = {};
+
+  // ============================================
+  // 🔄 ESTADO DE CARGA INICIAL
+  // ============================================
+  bool _cargandoInicial = true;
+  bool _datosInicialCargados = false;
 
   @override
   void initState() {
     super.initState();
-    _preCargarDatos();
+    _cargarDatosIniciales();
   }
 
   @override
@@ -49,15 +55,69 @@ class _PaginaStreamState extends State<PaginaStream> {
     super.dispose();
   }
 
-  // Carga inicial de nombres de equipos y estados de habilitación
-  Future<void> _preCargarDatos() async {
-    final resultados = await _repositorio.obtenerEquiposRaw();
-    if (mounted) {
-      setState(() {
-        for (var e in resultados) {
-          equiposInfo[e['id_equipo_control'].toString()] = e;
-        }
-      });
+  // ============================================
+  // 📥 CARGAR DATOS INICIALES
+  // ============================================
+  Future<void> _cargarDatosIniciales() async {
+    try {
+      // 1. Cargar info de equipos
+      final equipos = await _repositorio.obtenerEquiposRaw();
+
+      // 2. Cargar últimas posiciones conocidas
+      final ultimasPosiciones = await _repositorio.obtenerUltimasPosiciones();
+
+      if (mounted) {
+        setState(() {
+          // Guardar info de equipos
+          for (var e in equipos) {
+            equiposInfo[e['id_equipo_control'].toString()] = e;
+          }
+
+          // Procesar últimas posiciones
+          final ahora = DateTime.now();
+
+          for (var pos in ultimasPosiciones) {
+            final id = pos['fk_emisor'].toString();
+
+            // Solo si el equipo está habilitado
+            if (equiposInfo[id]?['habilitado'] != true) continue;
+
+            final lat = (pos['lat_grados'] as num?)?.toDouble() ?? 0.0;
+            final lon = (pos['lon_grados'] as num?)?.toDouble() ?? 0.0;
+
+            // Filtrar coordenadas inválidas
+            if (lat == 0.0 || lon == 0.0) continue;
+            if (lat < -20 || lat > -10 || lon < -75 || lon > -65) continue;
+
+            final tiempo = DateTime.parse(pos['tiempo']);
+            final posicion = ll.LatLng(lat, lon);
+
+            _ultimaPosicion[id] = posicion;
+            _ultimoTiempo[id] = tiempo;
+            _posicionAnterior[id] = posicion;
+            _tiempoAnterior[id] = tiempo;
+
+            // Determinar si está activo
+            final segundos = ahora.difference(tiempo).inSeconds.abs();
+            _equipoActivo[id] = segundos <= 60;
+            _velocidades[id] = 0.0;
+            _distanciasAcumuladas[id] = 0.0;
+          }
+
+          _cargandoInicial = false;
+          _datosInicialCargados = true;
+        });
+      }
+
+      debugPrint("✅ Datos iniciales cargados: ${_ultimaPosicion.length} equipos");
+
+    } catch (e) {
+      debugPrint("❌ Error cargando datos iniciales: $e");
+      if (mounted) {
+        setState(() {
+          _cargandoInicial = false;
+        });
+      }
     }
   }
 
@@ -74,52 +134,69 @@ class _PaginaStreamState extends State<PaginaStream> {
 
   @override
   Widget build(BuildContext context) {
+
+    // Mostrar loading mientras carga datos iniciales
+    if (_cargandoInicial) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: Colors.orange),
+              const SizedBox(height: 20),
+              Text(
+                "Cargando posiciones...",
+                style: TextStyle(color: Colors.grey[400]),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _repositorio.obtenerTrayectoriaStream(),
         builder: (context, snapshot) {
-          Map<String, Marker> marcadoresVisibles = {};
           final ahora = DateTime.now();
 
-          if (snapshot.hasData) {
-            // ============================================
-            // 📊 PROCESAR SOLO LOS DATOS RECIENTES
-            // Filtramos para obtener solo la última posición
-            // de cada equipo y determinar si está activo
-            // ============================================
+          // ============================================
+          // 📊 PROCESAR NUEVOS DATOS DEL STREAM
+          // ============================================
+          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
 
-            // Primero, encontrar la última posición de cada equipo
+            // Encontrar la última posición de cada equipo en el stream
             Map<String, Map<String, dynamic>> ultimosPuntos = {};
 
             for (var punto in snapshot.data!) {
               final id = punto['fk_emisor'].toString();
               final tiempo = DateTime.parse(punto['tiempo']);
 
-              // Guardar solo el punto más reciente de cada equipo
               if (!ultimosPuntos.containsKey(id) ||
                   tiempo.isAfter(DateTime.parse(ultimosPuntos[id]!['tiempo']))) {
                 ultimosPuntos[id] = punto;
               }
             }
 
-            // Ahora procesar cada equipo con su última posición
+            // Actualizar con datos del stream
             for (var entry in ultimosPuntos.entries) {
               final id = entry.key;
               final punto = entry.value;
 
-              // Filtro: Solo mostrar si el operador está habilitado
               if (equiposInfo[id]?['habilitado'] != true) continue;
 
-              final posActual = ll.LatLng(
-                (punto['lat_grados'] as num).toDouble(),
-                (punto['lon_grados'] as num).toDouble(),
-              );
+              final lat = (punto['lat_grados'] as num?)?.toDouble() ?? 0.0;
+              final lon = (punto['lon_grados'] as num?)?.toDouble() ?? 0.0;
+
+              // Filtrar coordenadas inválidas
+              if (lat == 0.0 || lon == 0.0) continue;
+              if (lat < -20 || lat > -10 || lon < -75 || lon > -65) continue;
+
+              final posActual = ll.LatLng(lat, lon);
               final tiempoActual = DateTime.parse(punto['tiempo']);
 
-              // ============================================
-              // 🟢 DETERMINAR SI ESTÁ ACTIVO (< 60 segundos)
-              // ============================================
               final segundosDesdeUltimo = ahora.difference(tiempoActual).inSeconds.abs();
               final estaActivo = segundosDesdeUltimo <= 60;
 
@@ -127,9 +204,7 @@ class _PaginaStreamState extends State<PaginaStream> {
               _ultimaPosicion[id] = posActual;
               _ultimoTiempo[id] = tiempoActual;
 
-              // ============================================
-              // 📏 CÁLCULO DE TELEMETRÍA (solo si activo)
-              // ============================================
+              // Calcular telemetría si activo
               if (estaActivo && _posicionAnterior.containsKey(id)) {
                 double metrosTramo = _calcularDistanciaMetros(_posicionAnterior[id]!, posActual);
 
@@ -142,45 +217,55 @@ class _PaginaStreamState extends State<PaginaStream> {
                   }
                 }
 
-                // ============================================
-                // 🛤️ AGREGAR AL RASTRO SOLO SI ESTÁ ACTIVO
-                // ============================================
+                // Agregar al rastro
                 _rastrosActivos.putIfAbsent(id, () => []);
                 _rastrosActivos[id]!.add(posActual);
 
-                // Limitar cola a últimos 20 puntos
                 if (_rastrosActivos[id]!.length > 20) {
                   _rastrosActivos[id]!.removeAt(0);
                 }
 
-                // Agregar a GraphHopper para corrección
                 _mapMatching.agregarPunto(id, posActual);
 
               } else if (!estaActivo) {
-                // ============================================
-                // 🔴 EQUIPO INACTIVO: Limpiar rastro y velocidad
-                // ============================================
                 _rastrosActivos[id]?.clear();
                 _velocidades[id] = 0.0;
               }
 
-              // Guardar estado para el siguiente cálculo
               _posicionAnterior[id] = posActual;
               _tiempoAnterior[id] = tiempoActual;
-
-              // ============================================
-              // 🚗 CREAR MARCADOR
-              // ============================================
-              final color = estaActivo ? Colors.greenAccent : Colors.grey;
-
-              marcadoresVisibles[id] = Marker(
-                key: ValueKey("live_$id"),
-                point: posActual,
-                width: 80,
-                height: 80,
-                child: _buildIconoOperador(id, color),
-              );
             }
+          }
+
+          // ============================================
+          // 🚗 CONSTRUIR MARCADORES DESDE DATOS CARGADOS
+          // ============================================
+          Map<String, Marker> marcadoresVisibles = {};
+
+          for (var entry in _ultimaPosicion.entries) {
+            final id = entry.key;
+            final posicion = entry.value;
+
+            // Verificar que el equipo esté habilitado
+            if (equiposInfo[id]?['habilitado'] != true) continue;
+
+            // Actualizar estado activo/inactivo
+            final tiempo = _ultimoTiempo[id];
+            if (tiempo != null) {
+              final segundos = ahora.difference(tiempo).inSeconds.abs();
+              _equipoActivo[id] = segundos <= 60;
+            }
+
+            final estaActivo = _equipoActivo[id] ?? false;
+            final color = estaActivo ? Colors.greenAccent : Colors.grey;
+
+            marcadoresVisibles[id] = Marker(
+              key: ValueKey("live_$id"),
+              point: posicion,
+              width: 80,
+              height: 80,
+              child: _buildIconoOperador(id, color),
+            );
           }
 
           // ============================================
@@ -192,10 +277,8 @@ class _PaginaStreamState extends State<PaginaStream> {
             final id = entry.key;
             final puntos = entry.value;
 
-            // Solo mostrar cola si el equipo está ACTIVO y tiene puntos
             if (_equipoActivo[id] == true && puntos.length >= 2) {
 
-              // Intentar obtener ruta corregida de GraphHopper
               List<ll.LatLng> puntosParaMostrar = _mapMatching.obtenerRutaCorregida(id);
 
               if (puntosParaMostrar.isEmpty || puntosParaMostrar.length < 2) {
@@ -215,9 +298,11 @@ class _PaginaStreamState extends State<PaginaStream> {
           return Stack(
             children: [
               FlutterMap(
-                options: const MapOptions(
-                  initialCenter: ll.LatLng(-14.6792, -69.4866),
-                  initialZoom: 16,
+                options: MapOptions(
+                  initialCenter: _ultimaPosicion.isNotEmpty
+                      ? _ultimaPosicion.values.first
+                      : const ll.LatLng(-15.488405, -70.150497),
+                  initialZoom: 15,
                 ),
                 children: [
                   // CAPA 1: MAPA SATELITAL
@@ -225,7 +310,7 @@ class _PaginaStreamState extends State<PaginaStream> {
                     urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                   ),
 
-                  // CAPA 2: POLILÍNEAS (SOLO EQUIPOS ACTIVOS)
+                  // CAPA 2: POLILÍNEAS
                   PolylineLayer(
                     polylines: polylines,
                   ),
@@ -235,12 +320,26 @@ class _PaginaStreamState extends State<PaginaStream> {
                 ],
               ),
 
-              // --- PANEL INFERIOR DE DATOS ---
+              // --- PANEL INFERIOR ---
               Positioned(
                 bottom: 20, left: 0, right: 0,
                 child: SizedBox(
                   height: 100,
-                  child: ListView(
+                  child: marcadoresVisibles.isEmpty
+                      ? Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        "No hay equipos habilitados",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ),
+                  )
+                      : ListView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 15),
                     children: marcadoresVisibles.keys.map((id) => _buildCardKPI(id)).toList(),
@@ -311,12 +410,15 @@ class _PaginaStreamState extends State<PaginaStream> {
         children: [
           Row(
             children: [
-              Text(
-                nombre,
-                style: TextStyle(
-                  color: activo ? Colors.orange : Colors.grey,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+              Expanded(
+                child: Text(
+                  nombre,
+                  style: TextStyle(
+                    color: activo ? Colors.orange : Colors.grey,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 5),

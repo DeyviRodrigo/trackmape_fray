@@ -97,7 +97,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
               return FlutterMap(
                 options: MapOptions(
-                  initialCenter: const ll.LatLng(-14.671137, -69.478404),
+                  initialCenter: const ll.LatLng(-15.488405, -70.150497),
                   initialZoom: 15,
                   onTap: (_, __) => setState(() => puntoSeleccionado = null),
                 ),
@@ -244,7 +244,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 100),
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: const Color(0xFF06329C),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.orange, width: 2),
         ),
@@ -349,7 +349,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
               const Icon(
                 Icons.local_shipping,
-                color: Colors.orange,
+                color: Color(0xFF06329C),
                 size: 26,
               ),
             ],
