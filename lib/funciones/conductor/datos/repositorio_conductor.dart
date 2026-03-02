@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RepositorioConductor {
@@ -138,34 +139,87 @@ class RepositorioConductor {
     required double lat,
     required double lon,
   }) async {
+    final resultado = await enviarPosicionConDetalle(
+      idDispositivo: idDispositivo,
+      lat: lat,
+      lon: lon,
+    );
+    return resultado['exito'] == true;
+  }
+
+  /// Versión con detalles del error para debugging
+  Future<Map<String, dynamic>> enviarPosicionConDetalle({
+    required String idDispositivo,
+    required double lat,
+    required double lon,
+    double? altitud,
+  }) async {
 
     try {
 
       final ahora = DateTime.now();
 
-      await _supabase.from('posiciones').insert({
-
+      final datos = {
         "fk_emisor": idDispositivo,
-
         "lat_grados": lat,
         "lon_grados": lon,
-
         "tiempo": ahora.toIso8601String(),
+        "epoca_rx": ahora.millisecondsSinceEpoch,
+      };
 
-        /// útil para análisis de tiempo
-        "epoca_rx": ahora.millisecondsSinceEpoch
+      // Agregar altitud si está disponible
+      if (altitud != null && altitud != 0.0) {
+        datos["alt_msnm_m"] = altitud.round();
+      }
 
-      }).timeout(const Duration(seconds: 10));
+      print("📤 Supabase INSERT posiciones: $datos");
 
-      return true;
+      await _supabase.from('posiciones').insert(datos)
+          .timeout(const Duration(seconds: 10));
+
+      print("✅ Supabase: Posición insertada correctamente");
+      return {
+        'exito': true,
+        'mensaje': 'Posición enviada'
+      };
+
+    } on PostgrestException catch (e) {
+
+      print("❌ Supabase PostgrestException: ${e.code} - ${e.message}");
+      print("   Details: ${e.details}");
+      print("   Hint: ${e.hint}");
+
+      String mensajeError = e.message;
+
+      // Errores comunes
+      if (e.code == '42501') {
+        mensajeError = "Sin permiso (RLS). Contacta al admin.";
+      } else if (e.code == '23503') {
+        mensajeError = "El dispositivo no existe en equipos_control";
+      } else if (e.code == '23502') {
+        mensajeError = "Campo requerido faltante: ${e.details}";
+      }
+
+      return {
+        'exito': false,
+        'mensaje': mensajeError,
+        'codigo': e.code,
+      };
+
+    } on TimeoutException {
+      print("❌ Supabase: Timeout de conexión");
+      return {
+        'exito': false,
+        'mensaje': 'Timeout - Sin conexión a internet'
+      };
 
     } catch (e) {
-
-      print("Error enviando posición: $e");
-      return false;
-
+      print("❌ Error enviando posición: $e");
+      return {
+        'exito': false,
+        'mensaje': e.toString()
+      };
     }
-
   }
 
 }

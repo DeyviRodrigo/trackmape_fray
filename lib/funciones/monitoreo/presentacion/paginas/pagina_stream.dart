@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
-import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_map_matching.dart';
+import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_servicio.dart';
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 
 class PaginaStream extends StatefulWidget {
@@ -16,9 +17,19 @@ class _PaginaStreamState extends State<PaginaStream> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
 
   // ============================================
-  // 🗺️ GRAPHHOPPER MAP MATCHING
+  // 🗺️ GRAPHHOPPER ROUTING - CADA 90 SEGUNDOS
   // ============================================
-  final GraphhopperMapMatching _mapMatching = GraphhopperMapMatching();
+  static const int _intervaloGraphHopper = 90; // segundos
+
+  // Punto de INICIO para cada equipo (se actualiza cada 90s)
+  Map<String, ll.LatLng> _puntoInicioGH = {};
+  Map<String, DateTime> _ultimaLlamadaGH = {};
+
+  // Rutas CORREGIDAS por GraphHopper (segmentos ya procesados)
+  Map<String, List<ll.LatLng>> _rutasCorregidas = {};
+
+  // Rastros CRUDOS (GPS sin corregir, últimos 90 segundos)
+  Map<String, List<ll.LatLng>> _rastrosCrudos = {};
 
   // Información de equipos y estados de telemetría
   Map<String, Map<String, dynamic>> equiposInfo = {};
@@ -34,14 +45,14 @@ class _PaginaStreamState extends State<PaginaStream> {
   Map<String, DateTime> _ultimoTiempo = {};
   Map<String, bool> _equipoActivo = {};
 
-  // Rastros SOLO para equipos activos
-  Map<String, List<ll.LatLng>> _rastrosActivos = {};
-
   // ============================================
   // 🔄 ESTADO DE CARGA INICIAL
   // ============================================
   bool _cargandoInicial = true;
   bool _datosInicialCargados = false;
+
+  // Contador de créditos usados (para mostrar en UI)
+  int _creditosUsados = 0;
 
   @override
   void initState() {
@@ -51,7 +62,6 @@ class _PaginaStreamState extends State<PaginaStream> {
 
   @override
   void dispose() {
-    _mapMatching.limpiarTodo();
     super.dispose();
   }
 
@@ -97,6 +107,10 @@ class _PaginaStreamState extends State<PaginaStream> {
             _posicionAnterior[id] = posicion;
             _tiempoAnterior[id] = tiempo;
 
+            // Inicializar punto de inicio para GraphHopper
+            _puntoInicioGH[id] = posicion;
+            _ultimaLlamadaGH[id] = ahora;
+
             // Determinar si está activo
             final segundos = ahora.difference(tiempo).inSeconds.abs();
             _equipoActivo[id] = segundos <= 60;
@@ -109,7 +123,7 @@ class _PaginaStreamState extends State<PaginaStream> {
         });
       }
 
-      debugPrint("✅ Datos iniciales cargados: ${_ultimaPosicion.length} equipos");
+      debugPrint("✅ Stream: Datos iniciales cargados (${_ultimaPosicion.length} equipos)");
 
     } catch (e) {
       debugPrint("❌ Error cargando datos iniciales: $e");
@@ -117,6 +131,70 @@ class _PaginaStreamState extends State<PaginaStream> {
         setState(() {
           _cargandoInicial = false;
         });
+      }
+    }
+  }
+
+  // ============================================
+  // 🗺️ LLAMAR A GRAPHHOPPER (cada 90 segundos)
+  // ============================================
+  Future<void> _verificarYLlamarGraphHopper(String id, ll.LatLng posicionActual) async {
+    final ahora = DateTime.now();
+    final ultimaLlamada = _ultimaLlamadaGH[id];
+
+    // Verificar si han pasado 90 segundos
+    if (ultimaLlamada == null) {
+      _puntoInicioGH[id] = posicionActual;
+      _ultimaLlamadaGH[id] = ahora;
+      return;
+    }
+
+    final segundosTranscurridos = ahora.difference(ultimaLlamada).inSeconds;
+
+    if (segundosTranscurridos >= _intervaloGraphHopper) {
+      final puntoInicio = _puntoInicioGH[id];
+
+      if (puntoInicio != null) {
+        // Calcular distancia entre inicio y actual
+        final distancia = _calcularDistanciaMetros(puntoInicio, posicionActual);
+
+        // Solo llamar si se movió más de 50 metros
+        if (distancia > 50) {
+          debugPrint("🗺️ GraphHopper [$id]: Corrigiendo tramo (${distancia.toStringAsFixed(0)}m)...");
+
+          try {
+            final rutaCorregida = await GraphhopperServicio.corregirRuta([
+              puntoInicio,
+              posicionActual,
+            ]);
+
+            if (rutaCorregida != null && rutaCorregida.isNotEmpty) {
+              // Agregar a las rutas corregidas
+              _rutasCorregidas.putIfAbsent(id, () => []);
+
+              // Si ya hay puntos, evitar duplicar el punto de conexión
+              if (_rutasCorregidas[id]!.isNotEmpty) {
+                _rutasCorregidas[id]!.addAll(rutaCorregida.skip(1));
+              } else {
+                _rutasCorregidas[id]!.addAll(rutaCorregida);
+              }
+
+              // Limpiar rastro crudo (ya fue procesado)
+              _rastrosCrudos[id]?.clear();
+
+              _creditosUsados++;
+              debugPrint("✅ GraphHopper [$id]: Ruta corregida (${rutaCorregida.length} puntos) - Créditos: $_creditosUsados");
+            }
+          } catch (e) {
+            debugPrint("❌ GraphHopper Error: $e");
+          }
+        } else {
+          debugPrint("⏭️ GraphHopper [$id]: Sin movimiento significativo (${distancia.toStringAsFixed(0)}m)");
+        }
+
+        // Actualizar punto de inicio y tiempo
+        _puntoInicioGH[id] = posicionActual;
+        _ultimaLlamadaGH[id] = ahora;
       }
     }
   }
@@ -217,19 +295,17 @@ class _PaginaStreamState extends State<PaginaStream> {
                   }
                 }
 
-                // Agregar al rastro
-                _rastrosActivos.putIfAbsent(id, () => []);
-                _rastrosActivos[id]!.add(posActual);
+                // Agregar al rastro CRUDO (sin corregir)
+                _rastrosCrudos.putIfAbsent(id, () => []);
+                _rastrosCrudos[id]!.add(posActual);
 
-                if (_rastrosActivos[id]!.length > 20) {
-                  _rastrosActivos[id]!.removeAt(0);
+                // Limitar rastro crudo a últimos 100 puntos
+                if (_rastrosCrudos[id]!.length > 100) {
+                  _rastrosCrudos[id] = _rastrosCrudos[id]!.sublist(_rastrosCrudos[id]!.length - 100);
                 }
 
-                _mapMatching.agregarPunto(id, posActual);
-
-              } else if (!estaActivo) {
-                _rastrosActivos[id]?.clear();
-                _velocidades[id] = 0.0;
+                // 🗺️ VERIFICAR SI TOCA LLAMAR A GRAPHHOPPER
+                _verificarYLlamarGraphHopper(id, posActual);
               }
 
               _posicionAnterior[id] = posActual;
@@ -238,7 +314,7 @@ class _PaginaStreamState extends State<PaginaStream> {
           }
 
           // ============================================
-          // 🚗 CONSTRUIR MARCADORES DESDE DATOS CARGADOS
+          // 📍 CONSTRUIR MARCADORES
           // ============================================
           Map<String, Marker> marcadoresVisibles = {};
 
@@ -269,29 +345,45 @@ class _PaginaStreamState extends State<PaginaStream> {
           }
 
           // ============================================
-          // 🛤️ CONSTRUIR POLILÍNEAS SOLO PARA ACTIVOS
+          // 🛤️ CONSTRUIR POLILÍNEAS
           // ============================================
           List<Polyline> polylines = [];
 
-          for (final entry in _rastrosActivos.entries) {
-            final id = entry.key;
-            final puntos = entry.value;
+          for (final id in _equipoActivo.keys) {
+            if (_equipoActivo[id] != true) continue;
 
-            if (_equipoActivo[id] == true && puntos.length >= 2) {
-
-              List<ll.LatLng> puntosParaMostrar = _mapMatching.obtenerRutaCorregida(id);
-
-              if (puntosParaMostrar.isEmpty || puntosParaMostrar.length < 2) {
-                puntosParaMostrar = puntos;
-              }
-
+            // 1. RUTA CORREGIDA (verde, sobre las calles)
+            final rutaCorregida = _rutasCorregidas[id];
+            if (rutaCorregida != null && rutaCorregida.length >= 2) {
               polylines.add(
                 Polyline(
-                  points: puntosParaMostrar,
-                  color: Colors.greenAccent.withOpacity(0.8),
+                  points: rutaCorregida,
+                  color: Colors.greenAccent.withOpacity(0.9),
                   strokeWidth: 5,
                 ),
               );
+            }
+
+            // 2. RASTRO CRUDO (naranja semi-transparente, GPS sin corregir)
+            final rastroCrudo = _rastrosCrudos[id];
+            if (rastroCrudo != null && rastroCrudo.length >= 2) {
+              // Conectar desde el último punto corregido al rastro crudo
+              List<ll.LatLng> puntosCrudos = [];
+
+              if (rutaCorregida != null && rutaCorregida.isNotEmpty) {
+                puntosCrudos.add(rutaCorregida.last);
+              }
+              puntosCrudos.addAll(rastroCrudo);
+
+              if (puntosCrudos.length >= 2) {
+                polylines.add(
+                  Polyline(
+                    points: puntosCrudos,
+                    color: Colors.orange.withOpacity(0.6),
+                    strokeWidth: 3,
+                  ),
+                );
+              }
             }
           }
 
@@ -334,7 +426,7 @@ class _PaginaStreamState extends State<PaginaStream> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Text(
-                        "No hay equipos habilitados",
+                        "No hay equipos activos",
                         style: TextStyle(color: Colors.grey),
                       ),
                     ),
@@ -347,30 +439,66 @@ class _PaginaStreamState extends State<PaginaStream> {
                 ),
               ),
 
-              // INDICADOR DE GRAPHHOPPER
+              // INDICADOR DE GRAPHHOPPER Y CRÉDITOS
               Positioned(
                 top: 10,
                 right: 10,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.black.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
                   ),
-                  child: const Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.route, color: Colors.greenAccent, size: 14),
-                      SizedBox(width: 4),
+                      const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.route, color: Colors.greenAccent, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'GraphHopper',
+                            style: TextStyle(
+                              color: Colors.greenAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
                       Text(
-                        'GraphHopper',
+                        'Créditos: $_creditosUsados',
                         style: TextStyle(
-                          color: Colors.greenAccent,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[400],
+                          fontSize: 9,
                         ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // LEYENDA DE COLORES
+              Positioned(
+                top: 10,
+                left: 10,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _leyendaItem(Colors.greenAccent, "Ruta corregida"),
+                      const SizedBox(height: 4),
+                      _leyendaItem(Colors.orange.withOpacity(0.6), "GPS en vivo"),
                     ],
                   ),
                 ),
@@ -379,6 +507,24 @@ class _PaginaStreamState extends State<PaginaStream> {
           );
         },
       ),
+    );
+  }
+
+  Widget _leyendaItem(Color color, String texto) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 20,
+          height: 3,
+          color: color,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          texto,
+          style: const TextStyle(color: Colors.white, fontSize: 10),
+        ),
+      ],
     );
   }
 

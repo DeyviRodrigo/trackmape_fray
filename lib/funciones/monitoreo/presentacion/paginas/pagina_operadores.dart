@@ -17,13 +17,13 @@ class _PaginaOperadoresState extends State<PaginaOperadores> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF06329C),
+      backgroundColor: const Color(0xFF000000),
       appBar: AppBar(
         title: const Text(
           "OPERADORES TRACKER",
           style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        backgroundColor: Color(0xFF06329C),
+        backgroundColor: Colors.black,
         elevation: 0,
       ),
       body: StreamBuilder<List<Map<String, dynamic>>>(

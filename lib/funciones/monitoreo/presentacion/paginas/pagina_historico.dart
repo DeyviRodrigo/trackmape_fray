@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
-import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_map_matching.dart';
+import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_servicio.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/core/utilidades/calculadora_geodesica.dart';
 import 'dart:math' as math;
@@ -16,7 +16,6 @@ class PaginaHistorico extends StatefulWidget {
 class _PaginaHistoricoState extends State<PaginaHistorico> {
 
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
-  final GraphhopperMapMatching _matcher = GraphhopperMapMatching();
 
   Map<String, String> mapaCodigos = {};
 
@@ -25,6 +24,10 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
   double velocidadCalc = 0.0;
   String tiempoReporte = "";
+
+  // Rutas corregidas por GraphHopper
+  Map<String, List<ll.LatLng>> _rutasCorregidas = {};
+  bool _corrigiendoRutas = false;
 
   // ============================================
   // ⚙️ CONFIGURACIÓN DE FILTROS
@@ -41,26 +44,83 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   Widget build(BuildContext context) {
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.orange,
-        child: const Icon(Icons.calendar_month, color: Colors.black),
-        onPressed: () async {
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // BOTÓN DE PRUEBA GRAPHHOPPER (ROUTING API)
+          FloatingActionButton(
+            heroTag: "testGH",
+            backgroundColor: Colors.green,
+            child: const Icon(Icons.route, color: Colors.white),
+            onPressed: () async {
+              print("🧪 PRUEBA: GraphHopper Routing API...");
 
-          DateTime? picker = await showDatePicker(
-            context: context,
-            initialDate: fechaSeleccionada,
-            firstDate: DateTime(2025),
-            lastDate: DateTime.now(),
-          );
+              // Puntos en Juliaca, Perú
+              final puntosPrueba = [
+                ll.LatLng(-15.4935, -70.1285),  // Inicio
+                ll.LatLng(-15.4993, -70.1241),  // Fin
+              ];
 
-          if (picker != null) {
-            setState(() {
-              fechaSeleccionada = picker;
-              puntoSeleccionado = null;
-            });
-          }
+              print("📍 Ruta: ${puntosPrueba.first} → ${puntosPrueba.last}");
 
-        },
+              try {
+                final resultado = await GraphhopperServicio.corregirRuta(puntosPrueba);
+
+                if (resultado != null && resultado.isNotEmpty) {
+                  print("✅ ÉXITO: ${resultado.length} puntos en la ruta");
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("✅ Ruta calculada: ${resultado.length} puntos"),
+                      backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                } else {
+                  print("⚠️ GraphHopper retornó vacío");
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("⚠️ No se pudo calcular la ruta"),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              } catch (e) {
+                print("❌ Error: $e");
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("❌ Error: $e"),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          // Botón calendario original
+          FloatingActionButton(
+            heroTag: "calendar",
+            backgroundColor: Colors.orange,
+            child: const Icon(Icons.calendar_month, color: Colors.black),
+            onPressed: () async {
+
+              DateTime? picker = await showDatePicker(
+                context: context,
+                initialDate: fechaSeleccionada,
+                firstDate: DateTime(2025),
+                lastDate: DateTime.now(),
+              );
+
+              if (picker != null) {
+                setState(() {
+                  fechaSeleccionada = picker;
+                  puntoSeleccionado = null;
+                  _rutasCorregidas.clear();
+                });
+              }
+
+            },
+          ),
+        ],
       ),
 
       body: Stack(
@@ -94,6 +154,13 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
               List<Map<String, dynamic>> trayectoria = _filtrarDatosValidos(trayectoriaRaw);
 
               trayectoria.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
+
+              // 🗺️ Preparar rutas y llamar a GraphHopper
+              final rutasPorEquipo = _prepararRutasPorEquipo(trayectoria);
+              if (_rutasCorregidas.isEmpty && rutasPorEquipo.isNotEmpty) {
+                // Llamar a GraphHopper en segundo plano
+                Future.microtask(() => _corregirRutasConGraphHopper(rutasPorEquipo));
+              }
 
               return FlutterMap(
                 options: MapOptions(
@@ -361,6 +428,39 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
     return marcadoresUltimaPosicion.values.toList();
   }
 
+  // ============================================
+  // 📊 PREPARAR RUTAS POR EQUIPO (para GraphHopper)
+  // ============================================
+  Map<String, List<ll.LatLng>> _prepararRutasPorEquipo(List<Map<String, dynamic>> pos) {
+    Map<String, List<ll.LatLng>> rutasPorEquipo = {};
+    Map<String, List<Map<String, dynamic>>> datosPorEquipo = {};
+
+    for (var p in pos) {
+      String id = p['fk_emisor'].toString();
+      datosPorEquipo.putIfAbsent(id, () => []);
+      datosPorEquipo[id]!.add(p);
+    }
+
+    for (var entry in datosPorEquipo.entries) {
+      final id = entry.key;
+      final puntos = entry.value;
+      puntos.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
+
+      List<ll.LatLng> ruta = [];
+      for (var p in puntos) {
+        final lat = (p['lat_grados'] as num).toDouble();
+        final lon = (p['lon_grados'] as num).toDouble();
+        ruta.add(ll.LatLng(lat, lon));
+      }
+
+      if (ruta.isNotEmpty) {
+        rutasPorEquipo[id] = ruta;
+      }
+    }
+
+    return rutasPorEquipo;
+  }
+
   List<Polyline> _generarLineas(List<Map<String, dynamic>> pos) {
 
     Map<String, List<ll.LatLng>> rutasPorEquipo = {};
@@ -434,15 +534,56 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
     }
 
     return rutasPorEquipo.entries.map((e) {
-
-      final puntosCorregidos = _matcher.ajustarRutaSync(e.value);
+      // Usar ruta corregida si existe, sino usar la original
+      final puntos = _rutasCorregidas[e.key] ?? e.value;
 
       return Polyline(
-        points: puntosCorregidos,
+        points: puntos,
         color: Colors.orange.withOpacity(0.7),
         strokeWidth: 4,
       );
 
     }).toList();
+  }
+
+  // ============================================
+  // 🗺️ CORREGIR RUTAS CON GRAPHHOPPER
+  // ============================================
+  Future<void> _corregirRutasConGraphHopper(Map<String, List<ll.LatLng>> rutasPorEquipo) async {
+    if (_corrigiendoRutas) return;
+
+    _corrigiendoRutas = true;
+
+    for (var entry in rutasPorEquipo.entries) {
+      final idEquipo = entry.key;
+      final puntos = entry.value;
+
+      // Solo corregir si hay suficientes puntos
+      if (puntos.length >= 2) {
+        try {
+          print("🗺️ GraphHopper: Corrigiendo ruta de $idEquipo (${puntos.length} puntos)...");
+
+          final puntosCorregidos = await GraphhopperServicio.corregirRuta(puntos);
+
+          if (puntosCorregidos != null && puntosCorregidos.isNotEmpty) {
+            _rutasCorregidas[idEquipo] = puntosCorregidos;
+            print("✅ GraphHopper: Ruta corregida para $idEquipo (${puntosCorregidos.length} puntos)");
+          } else {
+            print("⚠️ GraphHopper: Sin corrección para $idEquipo, usando original");
+            _rutasCorregidas[idEquipo] = puntos;
+          }
+        } catch (e) {
+          print("❌ GraphHopper Error: $e");
+          _rutasCorregidas[idEquipo] = puntos;
+        }
+      }
+    }
+
+    _corrigiendoRutas = false;
+
+    // Actualizar UI con las rutas corregidas
+    if (mounted) {
+      setState(() {});
+    }
   }
 }
