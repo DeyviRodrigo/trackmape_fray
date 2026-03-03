@@ -61,7 +61,7 @@ class _PaginaOperadoresState extends State<PaginaOperadores> {
 
                   // Lógica del Semáforo (Wifi)
                   Color colorWifi = Colors.grey;
-                  if (equipo.habilitado) {
+                  if (equipo.activo) {
                     colorWifi = Colors.orange;
                     if (ultimosReportes.containsKey(equipo.id)) {
                       final diff = DateTime.now().difference(ultimosReportes[equipo.id]!).inSeconds;
@@ -104,14 +104,14 @@ class _PaginaOperadoresState extends State<PaginaOperadores> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  equipo.nombre,
+                                  equipo.nombreMostrar,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  equipo.habilitado ? "Estado: Habilitado" : "Estado: Deshabilitado",
+                                  equipo.activo ? "Estado: Activo" : "Estado: Inactivo",
                                   style: TextStyle(
-                                      color: equipo.habilitado ? Colors.green : Colors.red,
+                                      color: equipo.activo ? Colors.green : Colors.red,
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500
                                   ),
@@ -143,17 +143,17 @@ class _PaginaOperadoresState extends State<PaginaOperadores> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (!equipo.habilitado)
+        if (!equipo.activo)
           _buildBotonCompacto(
-            label: "HABILITAR",
+            label: "ACTIVAR",
             color: Colors.green,
-            onPressed: () => _repositorio.actualizarEquipo(equipo.id, {'habilitado': true}),
+            onPressed: () => _repositorio.actualizarEquipo(equipo.id, {'activo': true}),
           ),
-        if (equipo.habilitado)
+        if (equipo.activo)
           _buildBotonCompacto(
-            label: "DESHABILITAR",
+            label: "DESACTIVAR",
             color: Colors.red,
-            onPressed: () => _repositorio.actualizarEquipo(equipo.id, {'habilitado': false}),
+            onPressed: () => _repositorio.actualizarEquipo(equipo.id, {'activo': false}),
           ),
       ],
     );

@@ -179,11 +179,11 @@ class GpsServicio {
   }
 
   /// Enviar posición a Supabase
-  Future<void> _enviarASupabase(String idDispositivo, Position pos) async {
+  Future<void> _enviarASupabase(String idEquipo, Position pos) async {
     debugPrint("📤 Enviando a Supabase...");
 
     final resultado = await _repo.enviarPosicionConDetalle(
-      idDispositivo: idDispositivo,
+      idEquipo: idEquipo,
       lat: pos.latitude,
       lon: pos.longitude,
       altitud: pos.altitude,
@@ -200,17 +200,17 @@ class GpsServicio {
       final errorMsg = resultado['mensaje'] ?? 'Error desconocido';
       ultimoError = errorMsg;
       debugPrint("⚠️ Supabase falló: $errorMsg → Guardando local...");
-      await _guardarEnLocal(idDispositivo, pos);
+      await _guardarEnLocal(idEquipo, pos);
     }
   }
 
   /// Guardar posición en SQLite
-  Future<void> _guardarEnLocal(String idDispositivo, Position pos) async {
+  Future<void> _guardarEnLocal(String idEquipo, Position pos) async {
     debugPrint("💾 Guardando en SQLite...");
 
     try {
       await _dbLocal.guardarPosicionLocal(
-        fkEmisor: idDispositivo,
+        fkEmisor: idEquipo,
         lat: pos.latitude,
         lon: pos.longitude,
         altitud: pos.altitude,
@@ -249,7 +249,7 @@ class GpsServicio {
 
       for (var pos in pendientes) {
         final resultado = await _repo.enviarPosicionConDetalle(
-          idDispositivo: pos['fk_emisor'],
+          idEquipo: pos['fk_emisor'],
           lat: pos['lat_grados'],
           lon: pos['lon_grados'],
           altitud: pos['alt_msnm']?.toDouble(),

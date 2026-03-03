@@ -90,7 +90,7 @@ class _PaginaStreamState extends State<PaginaStream> {
             final id = pos['fk_emisor'].toString();
 
             // Solo si el equipo está habilitado
-            if (equiposInfo[id]?['habilitado'] != true) continue;
+            if (equiposInfo[id]?['activo'] != true) continue;
 
             final lat = (pos['lat_grados'] as num?)?.toDouble() ?? 0.0;
             final lon = (pos['lon_grados'] as num?)?.toDouble() ?? 0.0;
@@ -263,7 +263,7 @@ class _PaginaStreamState extends State<PaginaStream> {
               final id = entry.key;
               final punto = entry.value;
 
-              if (equiposInfo[id]?['habilitado'] != true) continue;
+              if (equiposInfo[id]?['activo'] != true) continue;
 
               final lat = (punto['lat_grados'] as num?)?.toDouble() ?? 0.0;
               final lon = (punto['lon_grados'] as num?)?.toDouble() ?? 0.0;
@@ -323,7 +323,7 @@ class _PaginaStreamState extends State<PaginaStream> {
             final posicion = entry.value;
 
             // Verificar que el equipo esté habilitado
-            if (equiposInfo[id]?['habilitado'] != true) continue;
+            if (equiposInfo[id]?['activo'] != true) continue;
 
             // Actualizar estado activo/inactivo
             final tiempo = _ultimoTiempo[id];

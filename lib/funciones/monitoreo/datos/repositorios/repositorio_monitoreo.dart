@@ -1,14 +1,19 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../modelos/modelo_equipo.dart';
 
+/// ============================================
+/// REPOSITORIO MONITOREO - NUEVA ESTRUCTURA
+/// ============================================
+/// Adaptado para:
+/// - posiciones_2 (nueva tabla)
+/// - Campo 'activo' en lugar de 'habilitado'
+/// - Campo 'nombre' en lugar de 'nombre_equipo_control'
+///
 class RepositorioMonitoreo {
   final _supabase = Supabase.instance.client;
 
   // ============================================================
   // ⚠️ LÍMITE MÁXIMO DE REGISTROS POR CONSULTA
-  // Supabase tiene un límite por defecto de 1000 filas.
-  // Aquí lo aumentamos para obtener todos los datos del día.
-  // Puedes cambiar este valor si necesitas más.
   // ============================================================
   static const int _limiteMaximoRegistros = 60000;
 
@@ -27,7 +32,6 @@ class RepositorioMonitoreo {
   }
 
   /// Obtiene la lista estática de equipos con toda su información
-  /// Útil para inicializar cachés de "Habilitado/Deshabilitado" en el mapa
   Future<List<Map<String, dynamic>>> obtenerEquiposRaw() async {
     try {
       final res = await _supabase
@@ -41,8 +45,7 @@ class RepositorioMonitoreo {
     }
   }
 
-  /// Actualiza el estado (Habilitado, nombre, etc.) de un equipo
-  /// Este método es el que usará el botón HABILITAR/DESHABILITAR
+  /// Actualiza el estado (activo, nombre, etc.) de un equipo
   Future<bool> actualizarEquipo(String id, Map<String, dynamic> datos) async {
     try {
       await _supabase
@@ -61,21 +64,20 @@ class RepositorioMonitoreo {
   // ============================================================
 
   /// STREAM PRINCIPAL: Escucha todas las posiciones nuevas
-  /// El orden Ascendente es vital para que las polilíneas se dibujen bien
+  /// CAMBIADO: posiciones → posiciones_2
   Stream<List<Map<String, dynamic>>> obtenerTrayectoriaStream() {
     return _supabase
-        .from('posiciones')
+        .from('posiciones_2')
         .stream(primaryKey: ['id_posicion'])
         .order('tiempo', ascending: true);
   }
 
-  /// MÉTODO SENIOR: Obtiene la última posición conocida de CADA equipo
-  /// Se usa para que al abrir el mapa, los equipos habilitados aparezcan
-  /// "parados" en su último lugar aunque no se estén moviendo ahora.
+  /// Obtiene la última posición conocida de CADA equipo
+  /// CAMBIADO: posiciones → posiciones_2
   Future<List<Map<String, dynamic>>> obtenerUltimasPosiciones() async {
     try {
       final respuesta = await _supabase
-          .from('posiciones')
+          .from('posiciones_2')
           .select()
           .order('tiempo', ascending: false)
           .limit(_limiteMaximoRegistros);
@@ -95,10 +97,10 @@ class RepositorioMonitoreo {
   }
 
   /// Stream para detectar la conexión en tiempo real (Semáforo de colores)
-  /// Resuelve el error de 'streamUltimasConexiones' en PaginaOperadores
+  /// CAMBIADO: posiciones → posiciones_2
   Stream<List<Map<String, dynamic>>> streamUltimasConexiones() {
     return _supabase
-        .from('posiciones')
+        .from('posiciones_2')
         .stream(primaryKey: ['id_posicion'])
         .order('tiempo', ascending: false)
         .limit(50);
@@ -109,18 +111,18 @@ class RepositorioMonitoreo {
   // ============================================================
 
   /// Obtiene TODOS los datos de un día para la simulación
-  /// Usa límite alto para superar el default de 1000 de Supabase
+  /// CAMBIADO: posiciones → posiciones_2
   Future<List<Map<String, dynamic>>> obtenerDatosParaSimulacion(DateTime fecha) async {
     final inicio = DateTime(fecha.year, fecha.month, fecha.day, 0, 0, 0).toIso8601String();
     final fin = DateTime(fecha.year, fecha.month, fecha.day, 23, 59, 59).toIso8601String();
 
     final res = await _supabase
-        .from('posiciones')
+        .from('posiciones_2')
         .select()
         .gte('tiempo', inicio)
         .lte('tiempo', fin)
         .order('tiempo', ascending: true)
-        .limit(_limiteMaximoRegistros);  // ← LÍMITE ALTO PARA OBTENER TODO
+        .limit(_limiteMaximoRegistros);
 
     return List<Map<String, dynamic>>.from(res);
   }
@@ -130,19 +132,19 @@ class RepositorioMonitoreo {
   // ============================================================
 
   /// Obtiene trayectorias por una fecha específica (00:00 a 23:59)
-  /// Usa límite alto para superar el default de 1000 de Supabase
+  /// CAMBIADO: posiciones → posiciones_2
   Future<List<Map<String, dynamic>>> obtenerTrayectoriaPorFecha(DateTime fecha) async {
     try {
       final inicioDia = DateTime(fecha.year, fecha.month, fecha.day, 0, 0, 0).toIso8601String();
       final finDia = DateTime(fecha.year, fecha.month, fecha.day, 23, 59, 59).toIso8601String();
 
       final res = await _supabase
-          .from('posiciones')
+          .from('posiciones_2')
           .select()
           .gte('tiempo', inicioDia)
           .lte('tiempo', finDia)
           .order('tiempo', ascending: true)
-          .limit(_limiteMaximoRegistros);  // ← LÍMITE ALTO PARA OBTENER TODO
+          .limit(_limiteMaximoRegistros);
 
       return List<Map<String, dynamic>>.from(res);
     } catch (e) {

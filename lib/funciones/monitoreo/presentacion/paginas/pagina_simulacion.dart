@@ -30,12 +30,16 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
   Map<String, Marker> marcadoresActivos = {};
   Map<String, List<ll.LatLng>> rastrosCola = {};
 
-  static final Map<double, int> _velocidades = {
-    1.0: 800,
-    2.0: 400,
-    4.0: 200,
-    10.0: 80,
-  };
+  // Retorna milisegundos según velocidad
+  int _obtenerIntervalo(double velocidad) {
+    switch (velocidad) {
+      case 1.0: return 800;
+      case 2.0: return 400;
+      case 4.0: return 200;
+      case 10.0: return 80;
+      default: return 800;
+    }
+  }
 
   @override
   void initState() {
@@ -61,8 +65,8 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
       _repositorio.obtenerTrayectoriaPorFecha(fecha),
     ]);
 
-    final equipos = resultados[0] as List<Map<String, dynamic>>;
-    final trayectoria = resultados[1] as List<Map<String, dynamic>>;
+    final equipos = resultados[0];
+    final trayectoria = resultados[1];
 
     setState(() {
       for (final equipo in equipos) {
@@ -83,8 +87,8 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
     if (_datosHistoricos.isEmpty || !_reproduciendo) return;
 
     _timerSimulacion = Timer.periodic(
-      Duration(milliseconds: _velocidades[_velocidad] ?? 800),
-      (_) {
+      Duration(milliseconds: _obtenerIntervalo(_velocidad)),
+          (_) {
         if (_datosHistoricos.isEmpty || !_reproduciendo) return;
 
         if (_puntero >= _datosHistoricos.length) {
@@ -108,7 +112,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
 
   void _procesarPunto(Map<String, dynamic> punto) {
     final id = punto['fk_emisor'].toString();
-    if (equiposInfo[id]?['habilitado'] != true) return;
+    if (equiposInfo[id]?['activo'] != true) return;
 
     final pos = ll.LatLng(
       (punto['lat_grados'] as num).toDouble(),
@@ -293,17 +297,17 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
                   children: [
                     TileLayer(
                       urlTemplate:
-                          'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                      'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                     ),
                     PolylineLayer(
                       polylines: rastrosCola.entries
                           .map(
                             (e) => Polyline(
-                              points: e.value,
-                              color: Colors.greenAccent.withValues(alpha: 0.7),
-                              strokeWidth: 4,
-                            ),
-                          )
+                          points: e.value,
+                          color: Colors.greenAccent.withValues(alpha: 0.7),
+                          strokeWidth: 4,
+                        ),
+                      )
                           .toList(),
                     ),
                     MarkerLayer(markers: marcadoresActivos.values.toList()),

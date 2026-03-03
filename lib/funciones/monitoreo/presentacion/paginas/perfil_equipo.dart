@@ -14,15 +14,14 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   final _repositorio = RepositorioMonitoreo();
   late TextEditingController _nombreCtrl;
   late TextEditingController _codigoCtrl;
-  late bool _habilitado;
+  late bool _activo;
 
   @override
   void initState() {
     super.initState();
-    // Usamos los nombres exactos de tu modelo: nombre y codigo
     _nombreCtrl = TextEditingController(text: widget.equipo.nombre);
     _codigoCtrl = TextEditingController(text: widget.equipo.codigo);
-    _habilitado = widget.equipo.habilitado;
+    _activo = widget.equipo.activo;
   }
 
   @override
@@ -49,20 +48,20 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
             ),
             const SizedBox(height: 30),
             SwitchListTile(
-              title: const Text("Habilitar Operador", style: TextStyle(color: Colors.white)),
-              value: _habilitado,
+              title: const Text("Activar Operador", style: TextStyle(color: Colors.white)),
+              value: _activo,
               activeColor: Colors.orange,
-              onChanged: (val) => setState(() => _habilitado = val),
+              onChanged: (val) => setState(() => _activo = val),
             ),
             const SizedBox(height: 50),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, minimumSize: const Size(double.infinity, 50)),
               onPressed: () async {
-                // Enviamos los cambios a Supabase usando el ID correcto
+                // Enviamos los cambios a Supabase
                 final exito = await _repositorio.actualizarEquipo(widget.equipo.id, {
-                  'nombre_equipo_control': _nombreCtrl.text,
+                  'nombre': _nombreCtrl.text,
                   'codigo_equipo_control': _codigoCtrl.text,
-                  'habilitado': _habilitado,
+                  'activo': _activo,
                 });
                 if (exito && mounted) {
                   Navigator.pop(context);

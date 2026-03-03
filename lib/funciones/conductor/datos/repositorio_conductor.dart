@@ -1,14 +1,79 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// ============================================
+/// REPOSITORIO CONDUCTOR - NUEVA ESTRUCTURA
+/// ============================================
+/// Adaptado para:
+/// - equipos_control con UUID y fk_empresa
+/// - posiciones_2 (nueva tabla)
+/// - Campo 'activo' en lugar de 'habilitado'
+/// - Campo 'nombre' en lugar de 'nombre_equipo_control'
+/// - Campo 'id_equipo_fabrica' para ID del celular
+///
+/// FILTRO: Solo muestra Universidad Nacional de Juliaca
+///
 class RepositorioConductor {
 
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  // ============================================
+  // 🏢 EMPRESAS PERMITIDAS (FILTRO)
+  // ============================================
+  // Agrega aquí los IDs de empresas que quieres mostrar
+  // Si está vacío, muestra todas las empresas activas
+  static const List<String> _empresasPermitidas = [
+    '94b2de0b-6c99-4218-8536-b67b95a301e4',  // Universidad Nacional de Juliaca
+  ];
+
   /// ===============================
-  /// OBTENER SEDES DISPONIBLES
+  /// OBTENER EMPRESAS DISPONIBLES
   /// ===============================
-  /// Consulta todas las sedes para el dropdown
+  /// Filtra solo las empresas permitidas
+  Future<List<Map<String, dynamic>>> obtenerEmpresas() async {
+    try {
+      var query = _supabase
+          .from('empresas')
+          .select('id_empresa, razon_social, nombre_comercial')
+          .eq('activo', true);
+
+      // Aplicar filtro si hay empresas específicas
+      if (_empresasPermitidas.isNotEmpty) {
+        query = query.inFilter('id_empresa', _empresasPermitidas);
+      }
+
+      final resp = await query
+          .order('razon_social', ascending: true)
+          .timeout(const Duration(seconds: 10));
+
+      return List<Map<String, dynamic>>.from(resp);
+    } catch (e) {
+      print("❌ Error obteniendo empresas: $e");
+      return [];
+    }
+  }
+
+  /// ===============================
+  /// OBTENER SEDES POR EMPRESA
+  /// ===============================
+  Future<List<Map<String, dynamic>>> obtenerSedesPorEmpresa(String idEmpresa) async {
+    try {
+      final resp = await _supabase
+          .from('sedes')
+          .select()
+          .eq('fk_empresa', idEmpresa)
+          .timeout(const Duration(seconds: 10));
+
+      return List<Map<String, dynamic>>.from(resp);
+    } catch (e) {
+      print("❌ Error obteniendo sedes: $e");
+      return [];
+    }
+  }
+
+  /// ===============================
+  /// OBTENER TODAS LAS SEDES
+  /// ===============================
   Future<List<Map<String, dynamic>>> obtenerSedes() async {
     try {
       final resp = await _supabase
@@ -18,32 +83,29 @@ class RepositorioConductor {
 
       return List<Map<String, dynamic>>.from(resp);
     } catch (e) {
-      print("Error obteniendo sedes: $e");
+      print("❌ Error obteniendo sedes: $e");
       return [];
     }
   }
 
   /// ===============================
-  /// BUSCAR DISPOSITIVO
+  /// BUSCAR DISPOSITIVO POR ID FÁBRICA
   /// ===============================
-  /// Consulta si el dispositivo existe en equipos_control
-  Future<Map<String, dynamic>?> buscarDispositivo(String idDispositivo) async {
+  /// Busca si el celular ya está registrado usando id_equipo_fabrica
+  Future<Map<String, dynamic>?> buscarDispositivo(String idFabrica) async {
     try {
-
       final resp = await _supabase
           .from('equipos_control')
           .select()
-          .eq('id_equipo_control', idDispositivo)
+          .eq('id_equipo_fabrica', idFabrica)
           .maybeSingle()
           .timeout(const Duration(seconds: 10));
 
       return resp;
 
     } catch (e) {
-
-      print("Error buscando dispositivo: $e");
+      print("❌ Error buscando dispositivo: $e");
       return null;
-
     }
   }
 
@@ -51,55 +113,67 @@ class RepositorioConductor {
   /// REGISTRAR DISPOSITIVO
   /// ===============================
   /// Inserta el celular como equipo_control
-  /// Retorna un Map con {exito: bool, mensaje: String}
+  /// Ahora con fk_empresa obligatorio y UUID auto-generado
   Future<Map<String, dynamic>> registrarDispositivo({
-    required String id,
+    required String idFabrica,      // ID del celular (Android ID)
     required String codigo,
     required String nombre,
-    required String fkSede,  // Ahora viene del dropdown
+    required String fkEmpresa,      // UUID de la empresa (obligatorio)
+    String? fkSede,                 // UUID de la sede (opcional)
   }) async {
 
     try {
-
-      // Primero verificamos si ya existe
-      final existente = await buscarDispositivo(id);
+      // Verificar si ya existe por id_equipo_fabrica
+      final existente = await buscarDispositivo(idFabrica);
       if (existente != null) {
         return {
           'exito': false,
-          'mensaje': 'Este dispositivo ya está registrado con código: ${existente['codigo_equipo_control']}'
+          'mensaje': 'Este dispositivo ya está registrado con código: ${existente['codigo_equipo_control']}',
+          'id_equipo': existente['id_equipo_control'],
         };
       }
 
-      await _supabase.from('equipos_control').insert({
+      // Preparar datos para insertar
+      final Map<String, dynamic> datosInsert = {
+        // FK obligatoria
+        "fk_empresa": fkEmpresa,
 
-        /// PK
-        "id_equipo_control": id,
+        // ID del dispositivo físico (celular)
+        "id_equipo_fabrica": idFabrica,
 
-        /// FK a la tabla sedes - Viene del dropdown
-        "fk_sede": fkSede,
-
-        /// Datos del conductor
+        // Datos del conductor
         "codigo_equipo_control": codigo,
-        "nombre_equipo_control": nombre,
+        "nombre": nombre,
 
-        /// Tipo del equipo - TRACKER para aparecer en operadores
+        // Tipo del equipo - TRACKER para aparecer en operadores
         "tipo_equipo_control": "TRACKER",
 
-        /// Estado
-        "habilitado": true,
+        // Estado activo
+        "activo": true,
+      };
 
-      }).timeout(const Duration(seconds: 10));
+      // FK sede opcional
+      if (fkSede != null && fkSede.isNotEmpty) {
+        datosInsert["fk_sede"] = fkSede;
+      }
+
+      // Insertar nuevo equipo (UUID se genera automáticamente)
+      final respuesta = await _supabase
+          .from('equipos_control')
+          .insert(datosInsert)
+          .select()
+          .single()
+          .timeout(const Duration(seconds: 10));
 
       return {
         'exito': true,
-        'mensaje': 'Dispositivo registrado correctamente'
+        'mensaje': 'Dispositivo registrado correctamente',
+        'id_equipo': respuesta['id_equipo_control'],
       };
 
     } on PostgrestException catch (e) {
+      print("❌ PostgrestException: ${e.code} - ${e.message}");
 
-      print("Error PostgrestException: ${e.code} - ${e.message}");
-
-      // Errores específicos de Supabase/PostgreSQL
       if (e.code == '23505') {
         return {
           'exito': false,
@@ -110,7 +184,7 @@ class RepositorioConductor {
       if (e.code == '23503') {
         return {
           'exito': false,
-          'mensaje': 'La sede seleccionada no es válida'
+          'mensaje': 'La empresa o sede seleccionada no es válida'
         };
       }
 
@@ -120,27 +194,45 @@ class RepositorioConductor {
       };
 
     } catch (e) {
-
-      print("Error registrando dispositivo: $e");
+      print("❌ Error registrando dispositivo: $e");
       return {
         'exito': false,
         'mensaje': 'Error de conexión: $e'
       };
+    }
+  }
 
+  /// ===============================
+  /// OBTENER ID DEL EQUIPO REGISTRADO
+  /// ===============================
+  /// Retorna el UUID del equipo dado el id_equipo_fabrica
+  Future<String?> obtenerIdEquipo(String idFabrica) async {
+    try {
+      final resp = await _supabase
+          .from('equipos_control')
+          .select('id_equipo_control')
+          .eq('id_equipo_fabrica', idFabrica)
+          .maybeSingle()
+          .timeout(const Duration(seconds: 10));
+
+      return resp?['id_equipo_control']?.toString();
+    } catch (e) {
+      print("❌ Error obteniendo ID equipo: $e");
+      return null;
     }
   }
 
   /// ===============================
   /// ENVIAR POSICION GPS
   /// ===============================
-  /// Guarda la posición en la tabla posiciones
+  /// Guarda la posición en la tabla posiciones_2
   Future<bool> enviarPosicion({
-    required String idDispositivo,
+    required String idEquipo,  // UUID del equipo (id_equipo_control)
     required double lat,
     required double lon,
   }) async {
     final resultado = await enviarPosicionConDetalle(
-      idDispositivo: idDispositivo,
+      idEquipo: idEquipo,
       lat: lat,
       lon: lon,
     );
@@ -149,18 +241,17 @@ class RepositorioConductor {
 
   /// Versión con detalles del error para debugging
   Future<Map<String, dynamic>> enviarPosicionConDetalle({
-    required String idDispositivo,
+    required String idEquipo,  // UUID del equipo
     required double lat,
     required double lon,
     double? altitud,
   }) async {
 
     try {
-
       final ahora = DateTime.now();
 
       final datos = {
-        "fk_emisor": idDispositivo,
+        "fk_emisor": idEquipo,
         "lat_grados": lat,
         "lon_grados": lon,
         "tiempo": ahora.toIso8601String(),
@@ -172,30 +263,26 @@ class RepositorioConductor {
         datos["alt_msnm_m"] = altitud.round();
       }
 
-      print("📤 Supabase INSERT posiciones: $datos");
+      print("📤 INSERT posiciones_2: $datos");
 
-      await _supabase.from('posiciones').insert(datos)
+      await _supabase.from('posiciones_2').insert(datos)
           .timeout(const Duration(seconds: 10));
 
-      print("✅ Supabase: Posición insertada correctamente");
+      print("✅ Posición insertada correctamente");
       return {
         'exito': true,
         'mensaje': 'Posición enviada'
       };
 
     } on PostgrestException catch (e) {
-
-      print("❌ Supabase PostgrestException: ${e.code} - ${e.message}");
-      print("   Details: ${e.details}");
-      print("   Hint: ${e.hint}");
+      print("❌ PostgrestException: ${e.code} - ${e.message}");
 
       String mensajeError = e.message;
 
-      // Errores comunes
       if (e.code == '42501') {
         mensajeError = "Sin permiso (RLS). Contacta al admin.";
       } else if (e.code == '23503') {
-        mensajeError = "El dispositivo no existe en equipos_control";
+        mensajeError = "El equipo no existe en equipos_control";
       } else if (e.code == '23502') {
         mensajeError = "Campo requerido faltante: ${e.details}";
       }
@@ -207,7 +294,7 @@ class RepositorioConductor {
       };
 
     } on TimeoutException {
-      print("❌ Supabase: Timeout de conexión");
+      print("❌ Timeout de conexión");
       return {
         'exito': false,
         'mensaje': 'Timeout - Sin conexión a internet'
@@ -221,5 +308,4 @@ class RepositorioConductor {
       };
     }
   }
-
 }

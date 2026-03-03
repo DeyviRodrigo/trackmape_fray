@@ -5,6 +5,15 @@ import 'package:trackmape_sup/funciones/conductor/datos/repositorio_conductor.da
 import 'package:trackmape_sup/funciones/conductor/servicios/gps_servicio.dart';
 import 'package:trackmape_sup/funciones/conductor/servicios/identificador_dispositivo.dart';
 
+/// ============================================
+/// PÁGINA CONDUCTOR - NUEVA ESTRUCTURA
+/// ============================================
+/// Adaptado para:
+/// - Selección de EMPRESA obligatoria
+/// - Selección de SEDE opcional (filtrada por empresa)
+/// - UUID auto-generado para id_equipo_control
+/// - id_equipo_fabrica para identificar el celular
+///
 class PaginaConductor extends StatefulWidget {
   const PaginaConductor({super.key});
 
@@ -17,26 +26,32 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
   final RepositorioConductor _repo = RepositorioConductor();
   final GpsServicio _gps = GpsServicio();
 
-  String? idDispositivo;
+  // IDs del dispositivo
+  String? idFabrica;        // ID del celular (Android ID)
+  String? idEquipo;         // UUID del equipo en Supabase
   String? errorInicial;
 
+  // Estados
   bool cargando = true;
   bool registrando = false;
   bool registrado = false;
   bool gpsActivo = false;
 
+  // Datos para dropdowns
+  List<Map<String, dynamic>> empresas = [];
   List<Map<String, dynamic>> sedes = [];
+  String? empresaSeleccionada;
   String? sedeSeleccionada;
 
+  // Controllers
   final TextEditingController codigoCtrl = TextEditingController();
   final TextEditingController nombreCtrl = TextEditingController();
-
+  
   // Animaciones
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   late AnimationController _waveController;
-
-  // Timer para actualizar UI
+  
   Timer? _timerUI;
 
   @override
@@ -45,7 +60,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
     _inicializar();
     _iniciarAnimaciones();
   }
-
+  
   @override
   void dispose() {
     _pulseController.dispose();
@@ -54,7 +69,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
     _gps.detener();
     super.dispose();
   }
-
+  
   void _iniciarAnimaciones() {
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1200),
@@ -63,7 +78,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-
+    
     _waveController = AnimationController(
       duration: const Duration(milliseconds: 2000),
       vsync: this,
@@ -71,19 +86,30 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
   }
 
   Future<void> _inicializar() async {
-    await _cargarSedes();
+    await _cargarEmpresas();
     await _verificarDispositivo();
   }
 
-  Future<void> _cargarSedes() async {
+  Future<void> _cargarEmpresas() async {
     try {
-      final listaSedes = await _repo.obtenerSedes();
+      final listaEmpresas = await _repo.obtenerEmpresas();
+      if (mounted) {
+        setState(() {
+          empresas = listaEmpresas;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Error cargando empresas: $e");
+    }
+  }
+
+  Future<void> _cargarSedesPorEmpresa(String idEmpresa) async {
+    try {
+      final listaSedes = await _repo.obtenerSedesPorEmpresa(idEmpresa);
       if (mounted) {
         setState(() {
           sedes = listaSedes;
-          if (sedes.isNotEmpty) {
-            sedeSeleccionada = sedes.first['id_sede']?.toString();
-          }
+          sedeSeleccionada = null; // Reset sede al cambiar empresa
         });
       }
     } catch (e) {
@@ -94,9 +120,14 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
   Future<void> _verificarDispositivo() async {
     try {
       final id = await IdentificadorDispositivo.obtenerId();
-      idDispositivo = id;
+      idFabrica = id;
+      
+      // Buscar si ya está registrado
       final existe = await _repo.buscarDispositivo(id);
-      if (existe != null) registrado = true;
+      if (existe != null) {
+        registrado = true;
+        idEquipo = existe['id_equipo_control']?.toString();
+      }
     } catch (e) {
       errorInicial = e.toString();
     }
@@ -104,9 +135,11 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
   }
 
   Future<void> _registrar() async {
-    if (sedeSeleccionada == null || codigoCtrl.text.trim().isEmpty ||
-        nombreCtrl.text.trim().isEmpty || idDispositivo == null) {
-      _mensaje("Completa todos los campos", esError: true);
+    if (empresaSeleccionada == null || 
+        codigoCtrl.text.trim().isEmpty || 
+        nombreCtrl.text.trim().isEmpty || 
+        idFabrica == null) {
+      _mensaje("Completa todos los campos obligatorios", esError: true);
       return;
     }
 
@@ -114,13 +147,15 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
 
     try {
       final resultado = await _repo.registrarDispositivo(
-        id: idDispositivo!,
+        idFabrica: idFabrica!,
         codigo: codigoCtrl.text.trim(),
         nombre: nombreCtrl.text.trim(),
-        fkSede: sedeSeleccionada!,
+        fkEmpresa: empresaSeleccionada!,
+        fkSede: sedeSeleccionada,
       );
 
       if (resultado['exito'] == true) {
+        idEquipo = resultado['id_equipo']?.toString();
         if (mounted) setState(() => registrado = true);
         _mensaje(resultado['mensaje'], esError: false);
       } else {
@@ -140,7 +175,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
       _mostrarDialogoGPS();
       return;
     }
-
+    
     // Verificar permisos
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -150,34 +185,42 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
         return;
       }
     }
-
+    
     if (permission == LocationPermission.deniedForever) {
       _mostrarDialogoPermiso();
       return;
     }
 
+    // Obtener el UUID del equipo si no lo tenemos
+    if (idEquipo == null && idFabrica != null) {
+      idEquipo = await _repo.obtenerIdEquipo(idFabrica!);
+    }
+
+    if (idEquipo == null) {
+      _mensaje("Error: No se encontró el equipo registrado", esError: true);
+      return;
+    }
+    
     // Configurar callback para actualizar UI
     _gps.onEstadoCambiado = (mensaje, esError) {
       if (mounted) setState(() {});
     };
 
-    // Iniciar GPS
-    await _gps.iniciar(idDispositivo!);
+    // Iniciar GPS con el UUID del equipo
+    await _gps.iniciar(idEquipo!);
 
     setState(() => gpsActivo = true);
-
-    // Iniciar animaciones
+    
     _pulseController.repeat(reverse: true);
     _waveController.repeat();
-
-    // Timer para actualizar UI cada segundo
+    
     _timerUI = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
-
+    
     _mensaje("GPS activado", esError: false);
   }
-
+  
   void _mostrarDialogoGPS() {
     showDialog(
       context: context,
@@ -248,7 +291,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
       ),
     );
   }
-
+  
   void _mostrarDialogoPermiso() {
     showDialog(
       context: context,
@@ -318,7 +361,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
     if (!registrado) return _formRegistro();
     return _panelGps();
   }
-
+  
   Widget _pantallaCargando() {
     return const Scaffold(
       backgroundColor: Color(0xFF0D0D0D),
@@ -334,7 +377,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
       ),
     );
   }
-
+  
   Widget _pantallaError() {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -359,6 +402,9 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
     );
   }
 
+  // ============================================
+  // 📝 FORMULARIO DE REGISTRO
+  // ============================================
   Widget _formRegistro() {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -371,6 +417,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
         padding: const EdgeInsets.all(25),
         child: Column(
           children: [
+            // Icono
             Container(
               padding: const EdgeInsets.all(25),
               decoration: BoxDecoration(
@@ -379,21 +426,37 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
               ),
               child: const Icon(Icons.phone_android, size: 60, color: Colors.orange),
             ),
+            const SizedBox(height: 25),
+            
+            // ID del dispositivo
+            _infoCard("ID Dispositivo", idFabrica ?? "---", Icons.fingerprint),
+            const SizedBox(height: 20),
+            
+            // EMPRESA (obligatorio)
+            _dropdownEmpresas(),
+            const SizedBox(height: 15),
+            
+            // SEDE (opcional, filtrada por empresa)
+            if (empresaSeleccionada != null) ...[
+              _dropdownSedes(),
+              const SizedBox(height: 15),
+            ],
+            
+            // Código del vehículo
+            _textField(codigoCtrl, "Código *", "V01", Icons.qr_code),
+            const SizedBox(height: 15),
+            
+            // Nombre del conductor
+            _textField(nombreCtrl, "Nombre *", "Juan Pérez", Icons.person),
             const SizedBox(height: 30),
-            _infoCard("ID Dispositivo", idDispositivo ?? "---", Icons.fingerprint),
-            const SizedBox(height: 20),
-            _dropdownSedes(),
-            const SizedBox(height: 20),
-            _textField(codigoCtrl, "Código", "V01", Icons.qr_code),
-            const SizedBox(height: 20),
-            _textField(nombreCtrl, "Nombre", "Juan Pérez", Icons.person),
-            const SizedBox(height: 35),
+            
+            // Botón registrar
             SizedBox(
               width: double.infinity,
               height: 60,
               child: ElevatedButton.icon(
                 onPressed: registrando ? null : _registrar,
-                icon: registrando
+                icon: registrando 
                     ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                     : const Icon(Icons.check_circle, size: 24),
                 label: Text(registrando ? "REGISTRANDO..." : "REGISTRAR"),
@@ -403,6 +466,12 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                 ),
               ),
+            ),
+            
+            const SizedBox(height: 20),
+            Text(
+              "* Campos obligatorios",
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
           ],
         ),
@@ -426,8 +495,52 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(titulo, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                Text(valor, style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+                Text(valor, style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 11)),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dropdownEmpresas() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 5),
+            child: Text("Empresa *", style: TextStyle(color: Colors.orange[300], fontSize: 12)),
+          ),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: empresaSeleccionada,
+              isExpanded: true,
+              dropdownColor: const Color(0xFF252525),
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.orange),
+              hint: Text(
+                empresas.isEmpty ? "Cargando empresas..." : "Selecciona una empresa",
+                style: TextStyle(color: Colors.grey[500]),
+              ),
+              items: empresas.map((e) => DropdownMenuItem(
+                value: e['id_empresa']?.toString(),
+                child: Text(
+                  e['razon_social'] ?? e['nombre_comercial'] ?? 'Empresa',
+                  style: const TextStyle(color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )).toList(),
+              onChanged: (v) {
+                setState(() => empresaSeleccionada = v);
+                if (v != null) _cargarSedesPorEmpresa(v);
+              },
             ),
           ),
         ],
@@ -442,19 +555,34 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(15),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: sedeSeleccionada,
-          isExpanded: true,
-          dropdownColor: const Color(0xFF252525),
-          icon: const Icon(Icons.arrow_drop_down, color: Colors.orange),
-          hint: Text(sedes.isEmpty ? "Cargando..." : "Selecciona sede", style: TextStyle(color: Colors.grey[500])),
-          items: sedes.map((s) => DropdownMenuItem(
-            value: s['id_sede']?.toString(),
-            child: Text(s['nombre_sede'] ?? s['nombre'] ?? 'Sede', style: const TextStyle(color: Colors.white)),
-          )).toList(),
-          onChanged: (v) => setState(() => sedeSeleccionada = v),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 5),
+            child: Text("Sede (opcional)", style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+          ),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: sedeSeleccionada,
+              isExpanded: true,
+              dropdownColor: const Color(0xFF252525),
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+              hint: Text(
+                sedes.isEmpty ? "Sin sedes disponibles" : "Selecciona una sede",
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+              items: sedes.map((s) => DropdownMenuItem(
+                value: s['id_sede']?.toString(),
+                child: Text(
+                  s['nombre_sede'] ?? s['nombre'] ?? 'Sede',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              )).toList(),
+              onChanged: (v) => setState(() => sedeSeleccionada = v),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -481,7 +609,7 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
   }
 
   // ============================================
-  // 📱 PANEL GPS - UI MEJORADA
+  // 📱 PANEL GPS
   // ============================================
   Widget _panelGps() {
     return Scaffold(
@@ -530,7 +658,6 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
               style: TextStyle(color: Colors.orange, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2),
             ),
           ),
-          // Indicador de conexión
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
@@ -722,7 +849,6 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
               Expanded(child: _contador("❌", "FALLIDO", _gps.enviosFallidos, Colors.red)),
             ],
           ),
-          // Mostrar pendientes si hay
           if (_gps.pendientesSincronizar > 0)
             Padding(
               padding: const EdgeInsets.only(top: 15),
@@ -743,7 +869,6 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
                         style: const TextStyle(color: Colors.blue, fontSize: 13),
                       ),
                     ),
-                    // Botón para forzar sincronización
                     IconButton(
                       onPressed: () async {
                         await _gps.forzarSincronizacion();
@@ -836,11 +961,25 @@ class _PaginaConductorState extends State<PaginaConductor> with TickerProviderSt
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(color: const Color(0xFF151515), borderRadius: BorderRadius.circular(12)),
-      child: Row(
+      child: Column(
         children: [
-          const Icon(Icons.smartphone, color: Colors.grey, size: 20),
-          const SizedBox(width: 12),
-          Expanded(child: Text(idDispositivo ?? "", style: TextStyle(color: Colors.grey[500], fontSize: 11, fontFamily: 'monospace'))),
+          Row(
+            children: [
+              const Icon(Icons.smartphone, color: Colors.grey, size: 18),
+              const SizedBox(width: 10),
+              Expanded(child: Text("ID Fábrica: ${idFabrica ?? '---'}", style: TextStyle(color: Colors.grey[600], fontSize: 10, fontFamily: 'monospace'))),
+            ],
+          ),
+          if (idEquipo != null) ...[
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                const Icon(Icons.key, color: Colors.grey, size: 18),
+                const SizedBox(width: 10),
+                Expanded(child: Text("ID Equipo: $idEquipo", style: TextStyle(color: Colors.grey[600], fontSize: 10, fontFamily: 'monospace'))),
+              ],
+            ),
+          ],
         ],
       ),
     );
