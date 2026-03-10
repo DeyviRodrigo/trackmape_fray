@@ -5,7 +5,7 @@ import '../modelos/modelo_equipo.dart';
 /// REPOSITORIO MONITOREO - NUEVA ESTRUCTURA
 /// ============================================
 /// Adaptado para:
-/// - posiciones_2 (nueva tabla)
+/// - posiciones (nueva tabla)
 /// - Campo 'activo' en lugar de 'habilitado'
 /// - Campo 'nombre' en lugar de 'nombre_equipo_control'
 ///
@@ -64,20 +64,20 @@ class RepositorioMonitoreo {
   // ============================================================
 
   /// STREAM PRINCIPAL: Escucha todas las posiciones nuevas
-  /// CAMBIADO: posiciones → posiciones_2
+  /// CAMBIADO: posiciones → posiciones
   Stream<List<Map<String, dynamic>>> obtenerTrayectoriaStream() {
     return _supabase
-        .from('posiciones_2')
+        .from('posiciones')
         .stream(primaryKey: ['id_posicion'])
         .order('tiempo', ascending: true);
   }
 
   /// Obtiene la última posición conocida de CADA equipo
-  /// CAMBIADO: posiciones → posiciones_2
+  /// CAMBIADO: posiciones → posiciones
   Future<List<Map<String, dynamic>>> obtenerUltimasPosiciones() async {
     try {
       final respuesta = await _supabase
-          .from('posiciones_2')
+          .from('posiciones')
           .select()
           .order('tiempo', ascending: false)
           .limit(_limiteMaximoRegistros);
@@ -97,10 +97,10 @@ class RepositorioMonitoreo {
   }
 
   /// Stream para detectar la conexión en tiempo real (Semáforo de colores)
-  /// CAMBIADO: posiciones → posiciones_2
+  /// CAMBIADO: posiciones → posiciones
   Stream<List<Map<String, dynamic>>> streamUltimasConexiones() {
     return _supabase
-        .from('posiciones_2')
+        .from('posiciones')
         .stream(primaryKey: ['id_posicion'])
         .order('tiempo', ascending: false)
         .limit(50);
@@ -111,13 +111,13 @@ class RepositorioMonitoreo {
   // ============================================================
 
   /// Obtiene TODOS los datos de un día para la simulación
-  /// CAMBIADO: posiciones → posiciones_2
+  /// CAMBIADO: posiciones → posiciones
   Future<List<Map<String, dynamic>>> obtenerDatosParaSimulacion(DateTime fecha) async {
     final inicio = DateTime(fecha.year, fecha.month, fecha.day, 0, 0, 0).toIso8601String();
     final fin = DateTime(fecha.year, fecha.month, fecha.day, 23, 59, 59).toIso8601String();
 
     final res = await _supabase
-        .from('posiciones_2')
+        .from('posiciones')
         .select()
         .gte('tiempo', inicio)
         .lte('tiempo', fin)
@@ -132,14 +132,14 @@ class RepositorioMonitoreo {
   // ============================================================
 
   /// Obtiene trayectorias por una fecha específica (00:00 a 23:59)
-  /// CAMBIADO: posiciones → posiciones_2
+  /// CAMBIADO: posiciones → posiciones
   Future<List<Map<String, dynamic>>> obtenerTrayectoriaPorFecha(DateTime fecha) async {
     try {
       final inicioDia = DateTime(fecha.year, fecha.month, fecha.day, 0, 0, 0).toIso8601String();
       final finDia = DateTime(fecha.year, fecha.month, fecha.day, 23, 59, 59).toIso8601String();
 
       final res = await _supabase
-          .from('posiciones_2')
+          .from('posiciones')
           .select()
           .gte('tiempo', inicioDia)
           .lte('tiempo', finDia)
@@ -153,3 +153,4 @@ class RepositorioMonitoreo {
     }
   }
 }
+

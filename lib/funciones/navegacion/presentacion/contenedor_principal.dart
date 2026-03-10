@@ -5,6 +5,7 @@ import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_st
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_historico.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_simulacion.dart';
 import 'package:trackmape_sup/funciones/conductor/presentacion/pagina_conductor.dart';
+import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/rendimiento_operador.dart';
 
 class ContenedorPrincipal extends StatefulWidget {
   const ContenedorPrincipal({super.key});
@@ -24,6 +25,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
     const PaginaOperadores(), // 2
     const HojaSimulacion(),   // 3
     const PaginaConductor(),  // 4 ← NUEVA
+    const RendimientoOperador(),  // 4 ← NUEVA
   ];
 
   @override
@@ -51,6 +53,10 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
       case 4:
         tituloHeader = "APP CONDUCTOR";
         break;
+      case 5:
+        tituloHeader = "Rendimiento";
+        break;
+
 
       default:
         tituloHeader = "TrackMAPE";
@@ -193,6 +199,8 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
 
           _itemMenu(Icons.phone_android, "Aplicación Conductor", 4,
               color: Colors.lightBlueAccent),
+
+          _itemMenu(Icons.engineering, "Base de Operadores", 5),
 
           const Spacer(),
 

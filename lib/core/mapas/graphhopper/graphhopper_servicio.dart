@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// ============================================================
 /// SERVICIO GRAPHHOPPER - ROUTING API (GRATIS)
@@ -15,7 +16,7 @@ class GraphhopperServicio {
   // ============================================
   // 🔑 API KEY
   // ============================================
-  static const String apiKey = '4872623e-4fef-4d7b-80b9-9ead2c891594';
+  static String get _apiKey => dotenv.env['GRAPHHOPPER_API_KEY'] ?? '';
 
   // URL base de la API
   static const String _baseUrl = 'https://graphhopper.com/api/1';
@@ -59,7 +60,7 @@ class GraphhopperServicio {
               '&profile=$profile'
               '&locale=es'
               '&points_encoded=false'
-              '&key=$apiKey'
+              '&key=$_apiKey'
       );
 
       print('📤 GraphHopper Routing: ${puntoInicio.latitude},${puntoInicio.longitude} → ${puntoFin.latitude},${puntoFin.longitude}');
@@ -175,7 +176,7 @@ class GraphhopperServicio {
             '&profile=$profile'
             '&locale=es'
             '&points_encoded=false'
-            '&key=$apiKey'
+            '&key=$_apiKey'
     );
 
     try {
@@ -203,3 +204,4 @@ class GraphhopperServicio {
     }
   }
 }
+

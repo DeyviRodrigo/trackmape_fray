@@ -6,7 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// ============================================
 /// Adaptado para:
 /// - equipos_control con UUID y fk_empresa
-/// - posiciones_2 (nueva tabla)
+/// - posiciones (nueva tabla)
 /// - Campo 'activo' en lugar de 'habilitado'
 /// - Campo 'nombre' en lugar de 'nombre_equipo_control'
 /// - Campo 'id_equipo_fabrica' para ID del celular
@@ -225,7 +225,7 @@ class RepositorioConductor {
   /// ===============================
   /// ENVIAR POSICION GPS
   /// ===============================
-  /// Guarda la posición en la tabla posiciones_2
+  /// Guarda la posición en la tabla posiciones
   Future<bool> enviarPosicion({
     required String idEquipo,  // UUID del equipo (id_equipo_control)
     required double lat,
@@ -263,9 +263,9 @@ class RepositorioConductor {
         datos["alt_msnm_m"] = altitud.round();
       }
 
-      print("📤 INSERT posiciones_2: $datos");
+      print("📤 INSERT posiciones: $datos");
 
-      await _supabase.from('posiciones_2').insert(datos)
+      await _supabase.from('posiciones').insert(datos)
           .timeout(const Duration(seconds: 10));
 
       print("✅ Posición insertada correctamente");

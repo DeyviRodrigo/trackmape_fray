@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'funciones/navegacion/presentacion/contenedor_principal.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
+
+  final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+
+  if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+    throw Exception('Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env');
+  }
 
   await Supabase.initialize(
-    url: 'https://yrovlzezlxalcidoiakf.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlyb3ZsemV6bHhhbGNpZG9pYWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2MTEyNTUsImV4cCI6MjA4NTE4NzI1NX0.hpQYhuqhVxYiWxlJFXPS5SZYENS3Uo7CUMRLjtb9x28',
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   );
 
   runApp(const AplicacionTrackMAPE());
