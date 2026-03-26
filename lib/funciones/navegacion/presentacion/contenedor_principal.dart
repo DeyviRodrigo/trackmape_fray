@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:trackmape_sup/funciones/conductor/presentacion/pagina_conductor.dart';
 import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/rendimiento_operador.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_historico.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_operadores.dart';
@@ -22,8 +21,6 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
     PaginaHistorico(),
     PaginaOperadores(),
     HojaSimulacion(),
-    PaginaConductor(),
-    RendimientoOperador(),
     ValidacionEquiposPage(),
   ];
 
@@ -45,13 +42,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
         tituloHeader = 'SIMULACION DE TRANSCURSO';
         break;
       case 4:
-        tituloHeader = 'APP CONDUCTOR';
-        break;
-      case 5:
         tituloHeader = 'Rendimiento';
-        break;
-      case 6:
-        tituloHeader = 'RENDIMIENTO DE OPERADOR';
         break;
       default:
         tituloHeader = 'TrackMAPE';
@@ -167,14 +158,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
             endIndent: 20,
           ),
           _itemMenu(Icons.engineering, 'Base de Operadores', 2),
-          _itemMenu(
-            Icons.phone_android,
-            'Aplicacion Conductor',
-            4,
-            color: Colors.lightBlueAccent,
-          ),
-          _itemMenu(Icons.assessment, 'Rendimiento', 5),
-          _itemMenu(Icons.fact_check_rounded, 'Rendimiento de Operador', 6),
+          _itemMenu(Icons.fact_check_rounded, 'Rendimiento de Operador', 4),
           const Spacer(),
           const Divider(color: Colors.white24),
           _itemMenu(Icons.logout, 'Cerrar Sesion', -1, color: Colors.redAccent),
