@@ -1,0 +1,63 @@
+name: trackmape_sup
+description: "Supervisor de flota"
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_dotenv: ^5.2.1
+
+  # --- BASE DE DATOS (Lo que faltaba) ---
+  supabase_flutter: ^2.5.8
+  # --- MAPAS Y GEOLOCALIZACIÓN ---
+  maplibre_gl: ^0.25.0
+  latlong2: ^0.9.1
+  # --- UTILIDADES Y FECHAS (Faltaba para los Informes) ---
+  intl: ^0.19.0
+  device_info_plus: ^10.1.2
+  connectivity_plus: ^6.1.0
+
+  # --- SENSORES (Opcional, pero estaba en tu guía) ---
+  sensors_plus: ^7.0.0
+
+  # --- ARQUITECTURA Y ESTADO ---
+  flutter_bloc: ^8.1.6
+  get_it: ^7.7.0
+  equatable: ^2.0.5
+  # 📍 GPS y permisos de ubicación
+  geolocator: ^13.0.1
+  permission_handler: ^11.3.1
+
+  # --- SERVICIO GPS EN SEGUNDO PLANO ---
+  flutter_background_service: ^5.0.6
+  flutter_background_service_android: ^6.2.4
+  # --- RED Y DATOS ---
+  dio: ^5.4.1
+  http: ^1.2.0
+  internet_connection_checker: 1.0.0+1
+  sqflite: ^2.3.2
+  path: ^1.9.0
+  # --- UI Y DISEÑO ---
+  font_awesome_flutter: ^10.7.0
+  google_fonts: ^6.2.1
+  cupertino_icons: ^1.0.8
+  flutter_map: ^7.0.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # Estos deben estar alineados exactamente igual que flutter_test
+  build_runner: ^2.4.8
+  freezed: ^2.4.7
+  json_serializable: ^6.7.1
+  flutter_lints: ^2.0.0 # Asegúrate de que solo haya uno
+
+flutter:
+
+  uses-material-design: true
+  assets:
+    - .env
