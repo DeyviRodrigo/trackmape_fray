@@ -4,6 +4,7 @@ import '../modelos/modelo_equipo.dart';
 
 class RepositorioMonitoreo {
   final _supabase = Supabase.instance.client;
+  static const String tipoEquipoSeeedWioTrackerL1 = 'SEEED WIO TRACKER L1';
 
   static const int _limiteMaximoRegistros = 60000;
   static const Duration _intervaloStreamEnVivo = Duration(seconds: 5);
@@ -11,14 +12,28 @@ class RepositorioMonitoreo {
   static const int _limiteDiagnostico = 1000;
   static const int _tamanoPagina = 1000;
 
-  Stream<List<ModeloEquipo>> streamEquipos() {
+  Stream<List<ModeloEquipo>> streamEquipos({
+    String? tipoEquipoControl,
+  }) {
     return _supabase
         .from('equipos_control')
         .stream(primaryKey: ['id_equipo_control'])
         .map(
-          (lista) => lista
-              .map((e) => ModeloEquipo.fromJson(_normalizarEquipo(e)))
-              .toList(),
+          (lista) {
+            var equipos = lista
+                .map((e) => ModeloEquipo.fromJson(_normalizarEquipo(e)))
+                .toList();
+
+            final tipoFiltro = tipoEquipoControl?.trim();
+            if (tipoFiltro != null && tipoFiltro.isNotEmpty) {
+              equipos = equipos.where((equipo) {
+                final tipo = equipo.tipoEquipo?.trim() ?? '';
+                return tipo == tipoFiltro;
+              }).toList();
+            }
+
+            return equipos;
+          },
         );
   }
 

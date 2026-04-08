@@ -4,10 +4,18 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 
 class PaginaStream extends StatefulWidget {
-  const PaginaStream({super.key});
+  const PaginaStream({
+    super.key,
+    this.equipoIdFiltro,
+    this.nombreEquipoFiltro,
+  });
+
+  final String? equipoIdFiltro;
+  final String? nombreEquipoFiltro;
 
   @override
   State<PaginaStream> createState() => _PaginaStreamState();
@@ -76,6 +84,9 @@ class _PaginaStreamState extends State<PaginaStream> {
       setState(() {
         for (final equipo in equipos) {
           final id = equipo['id_equipo_control'].toString();
+          if (widget.equipoIdFiltro != null && widget.equipoIdFiltro != id) {
+            continue;
+          }
           equiposInfo[id] = equipo;
           _equipoActivo.putIfAbsent(id, () => false);
           _velocidades.putIfAbsent(id, () => 0.0);
@@ -188,11 +199,16 @@ class _PaginaStreamState extends State<PaginaStream> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _trayectoriaStream,
-        builder: (context, snapshot) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 760;
+        final cardHeight = isMobile ? 120.0 : 100.0;
+
+        return Scaffold(
+          backgroundColor: Colors.black,
+          body: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _trayectoriaStream,
+            builder: (context, snapshot) {
           final ahora = DateTime.now();
 
           if (snapshot.hasData && snapshot.data!.isNotEmpty) {
@@ -220,9 +236,9 @@ class _PaginaStreamState extends State<PaginaStream> {
             marcadoresVisibles[id] = Marker(
               key: ValueKey('live_$id'),
               point: posicion,
-              width: 90,
-              height: 80,
-              child: _buildIconoOperador(id, color),
+              width: isMobile ? 74 : 90,
+              height: isMobile ? 68 : 80,
+              child: _buildIconoOperador(id, color, isMobile: isMobile),
             );
           }
 
@@ -250,8 +266,8 @@ class _PaginaStreamState extends State<PaginaStream> {
                 options: MapOptions(
                   initialCenter: _ultimaPosicion.isNotEmpty
                       ? _ultimaPosicion.values.first
-                      : const ll.LatLng(-15.488405, -70.150497),
-                  initialZoom: 15,
+                      : puntoTrabajoLatLng,
+                  initialZoom: isMobile ? 14.5 : 15,
                 ),
                 children: [
                   TileLayer(
@@ -261,13 +277,13 @@ class _PaginaStreamState extends State<PaginaStream> {
                   MarkerLayer(markers: marcadoresVisibles.values.toList()),
                 ],
               ),
-              Positioned(
-                bottom: 20,
-                left: 0,
-                right: 0,
-                child: SizedBox(
-                  height: 100,
-                  child: idsTarjetas.isEmpty
+                Positioned(
+                  bottom: isMobile ? 12 : 20,
+                  left: 0,
+                  right: 0,
+                  child: SizedBox(
+                    height: cardHeight,
+                    child: idsTarjetas.isEmpty
                       ? Center(
                           child: Container(
                             padding: const EdgeInsets.all(15),
@@ -283,27 +299,54 @@ class _PaginaStreamState extends State<PaginaStream> {
                         )
                       : ListView(
                           scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          children: idsTarjetas.map((id) => _buildCardKPI(id)).toList(),
+                          padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 15),
+                          children: idsTarjetas
+                              .map((id) => _buildCardKPI(id, isMobile: isMobile))
+                              .toList(),
                         ),
+                  ),
                 ),
-              ),
               Positioned(
                 top: 10,
                 left: 10,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _leyendaItem(Colors.orange.withOpacity(0.75), 'GPS en vivo'),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (widget.equipoIdFiltro != null) ...[
+                      _buildFloatingBackButton(),
+                      const SizedBox(width: 10),
                     ],
-                  ),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.equipoIdFiltro != null)
+                            Text(
+                              widget.nombreEquipoFiltro?.trim().isNotEmpty == true
+                                  ? 'Unidad: ${widget.nombreEquipoFiltro}'
+                                  : 'Unidad filtrada',
+                              style: const TextStyle(
+                                color: Colors.orange,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          if (widget.equipoIdFiltro != null)
+                            const SizedBox(height: 6),
+                          _leyendaItem(
+                            Colors.orange.withOpacity(0.75),
+                            'GPS en vivo',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Positioned(
@@ -312,11 +355,15 @@ class _PaginaStreamState extends State<PaginaStream> {
                 child: ElevatedButton.icon(
                   onPressed: _abrirDiagnostico,
                   icon: const Icon(Icons.analytics, size: 18),
-                  label: const Text('Diagnostico'),
+                  label: Text(isMobile ? 'Diag.' : 'Diagnostico'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.black.withOpacity(0.8),
                     foregroundColor: Colors.orange,
                     side: const BorderSide(color: Colors.orange),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isMobile ? 10 : 16,
+                      vertical: 10,
+                    ),
                   ),
                 ),
               ),
@@ -325,13 +372,15 @@ class _PaginaStreamState extends State<PaginaStream> {
                   child: Container(
                     color: Colors.black.withOpacity(0.65),
                     alignment: Alignment.center,
-                    child: _buildPanelDiagnostico(),
+                    child: _buildPanelDiagnostico(isMobile: isMobile),
                   ),
                 ),
             ],
-          );
-        },
-      ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -349,16 +398,36 @@ class _PaginaStreamState extends State<PaginaStream> {
     );
   }
 
-  Widget _buildCardKPI(String id) {
+  Widget _buildFloatingBackButton() {
+    return Material(
+      color: Colors.black.withOpacity(0.82),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: () => Navigator.of(context).maybePop(),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.orange.withOpacity(0.75)),
+          ),
+          child: const Icon(Icons.arrow_back, color: Colors.orange),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardKPI(String id, {bool isMobile = false}) {
     final nombre = _obtenerEtiquetaEquipo(id);
     final vel = _velocidades[id] ?? 0.0;
     final dist = _distanciasAcumuladas[id] ?? 0.0;
     final activo = _equipoActivo[id] ?? false;
 
     return Container(
-      width: 170,
+      width: isMobile ? 180 : 170,
       margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(isMobile ? 10 : 12),
       decoration: BoxDecoration(
         color: const Color(0xFF121212).withOpacity(0.9),
         borderRadius: BorderRadius.circular(12),
@@ -380,7 +449,7 @@ class _PaginaStreamState extends State<PaginaStream> {
                   style: TextStyle(
                     color: activo ? Colors.orange : Colors.grey,
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: isMobile ? 13 : 14,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -419,7 +488,7 @@ class _PaginaStreamState extends State<PaginaStream> {
     );
   }
 
-  Widget _buildIconoOperador(String id, Color color) {
+  Widget _buildIconoOperador(String id, Color color, {bool isMobile = false}) {
     return Column(
       children: [
         Container(
@@ -438,7 +507,7 @@ class _PaginaStreamState extends State<PaginaStream> {
             ),
           ),
         ),
-        Icon(Icons.local_shipping, color: color, size: 38),
+        Icon(Icons.local_shipping, color: color, size: isMobile ? 30 : 38),
       ],
     );
   }
@@ -453,10 +522,13 @@ class _PaginaStreamState extends State<PaginaStream> {
     return 'Unidad';
   }
 
-  Widget _buildPanelDiagnostico() {
+  Widget _buildPanelDiagnostico({bool isMobile = false}) {
     return Container(
-      width: 820,
-      constraints: const BoxConstraints(maxHeight: 620),
+      width: isMobile ? double.infinity : 820,
+      constraints: BoxConstraints(
+        maxWidth: isMobile ? 520 : 820,
+        maxHeight: isMobile ? 560 : 620,
+      ),
       margin: const EdgeInsets.all(24),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(

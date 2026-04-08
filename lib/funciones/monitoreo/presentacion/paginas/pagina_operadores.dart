@@ -38,7 +38,10 @@ class _PaginaOperadoresState extends State<PaginaOperadores> {
 
           return StreamBuilder<List<ModeloEquipo>>(
             // Lista de equipos filtrada por TRACKER
-            stream: _repositorio.streamEquipos(),
+            stream: _repositorio.streamEquipos(
+              tipoEquipoControl:
+                  RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
+            ),
             builder: (context, snapshotEquipos) {
               if (snapshotEquipos.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: Colors.orange));
