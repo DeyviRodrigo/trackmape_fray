@@ -61,3 +61,11 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    - assets/rutas_operativas/
+  fonts:
+    - family: IconoVolqueteOtf1
+      fonts:
+        - asset: assets/fonts/iconovolquete1.otf
+    - family: IconoCargadorOtf1
+      fonts:
+        - asset: assets/fonts/iconocargador1.otf

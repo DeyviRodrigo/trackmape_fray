@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/rendimiento_operador.dart';
+import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/comparativo_rutas_page.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_historico.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_operadores.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_simulacion.dart';
@@ -22,6 +22,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
     PaginaOperadores(),
     HojaSimulacion(),
     ValidacionEquiposPage(),
+    ComparativoRutasPage(),
   ];
 
   @override
@@ -43,6 +44,9 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
         break;
       case 4:
         tituloHeader = 'Rendimiento';
+        break;
+      case 5:
+        tituloHeader = 'COMPARATIVO DE RUTAS';
         break;
       default:
         tituloHeader = 'TrackMAPE';
@@ -159,6 +163,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
           ),
           _itemMenu(Icons.engineering, 'Base de Operadores', 2),
           _itemMenu(Icons.fact_check_rounded, 'Rendimiento de Operador', 4),
+          _itemMenu(Icons.compare_arrows_rounded, 'Comparativo de Rutas', 5),
           const Spacer(),
           const Divider(color: Colors.white24),
           _itemMenu(Icons.logout, 'Cerrar Sesion', -1, color: Colors.redAccent),

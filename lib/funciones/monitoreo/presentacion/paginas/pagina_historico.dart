@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 
@@ -10,10 +11,12 @@ class PaginaHistorico extends StatefulWidget {
     super.key,
     this.equipoIdFiltro,
     this.nombreEquipoFiltro,
+    this.fechaInicial,
   });
 
   final String? equipoIdFiltro;
   final String? nombreEquipoFiltro;
+  final DateTime? fechaInicial;
 
   @override
   State<PaginaHistorico> createState() => _PaginaHistoricoState();
@@ -24,11 +27,19 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   final LimpiadorTrayectoria _limpiador = const LimpiadorTrayectoria();
 
   final Map<String, String> mapaEtiquetasEquipos = {};
+  final Map<String, String> mapaNombresEquipos = {};
+  final Map<String, String> mapaCodigosEquipos = {};
 
-  DateTime fechaSeleccionada = DateTime.now();
+  late DateTime fechaSeleccionada;
   Map<String, dynamic>? puntoSeleccionado;
   double velocidadCalc = 0.0;
   String tiempoReporte = '';
+
+  @override
+  void initState() {
+    super.initState();
+    fechaSeleccionada = widget.fechaInicial ?? DateTime.now();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +47,13 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 760;
 
-        return Scaffold(
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) return;
+            _cerrarHistorico();
+          },
+          child: Scaffold(
       floatingActionButton: FloatingActionButton(
         heroTag: 'calendar',
         backgroundColor: Colors.orange,
@@ -74,11 +91,15 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
               final listaEquipos =
                   snapshot.data![0] as List<Map<String, dynamic>>;
               mapaEtiquetasEquipos.clear();
+              mapaNombresEquipos.clear();
+              mapaCodigosEquipos.clear();
               for (final equipo in listaEquipos) {
                 final id = equipo['id_equipo_control'].toString();
                 final nombre = equipo['nombre']?.toString().trim() ?? '';
                 final codigo =
                     equipo['codigo_equipo_control']?.toString().trim() ?? '';
+                mapaNombresEquipos[id] = nombre;
+                mapaCodigosEquipos[id] = codigo;
                 mapaEtiquetasEquipos[id] = nombre.isNotEmpty
                     ? nombre
                     : (codigo.isNotEmpty ? codigo : 'S/N');
@@ -152,9 +173,14 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
           if (puntoSeleccionado != null) _buildPanelInfo(isMobile: isMobile),
         ],
       ),
+        ),
         );
       },
     );
+  }
+
+  void _cerrarHistorico() {
+    Navigator.of(context).pop<DateTime>(fechaSeleccionada);
   }
 
   List<Map<String, dynamic>> _filtrarDatosValidos(List<Map<String, dynamic>> datos) {
@@ -292,7 +318,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
       color: Colors.black.withOpacity(0.82),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: () => Navigator.of(context).maybePop(),
+        onTap: _cerrarHistorico,
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: 42,
@@ -325,6 +351,10 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
       if (pos == null) {
         continue;
       }
+      final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+        nombre: mapaNombresEquipos[id],
+        codigo: mapaCodigosEquipos[id],
+      );
 
       marcadoresUltimaPosicion[id] = Marker(
         point: ll.LatLng(
@@ -353,8 +383,8 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                   ),
                 ),
               ),
-              const Icon(
-                Icons.local_shipping,
+              Icon(
+                iconoEquipo,
                 color: Color(0xFF06329C),
                 size: 26,
               ),

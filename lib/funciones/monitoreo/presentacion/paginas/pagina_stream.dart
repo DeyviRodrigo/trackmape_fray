@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
+import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
 
 class PaginaStream extends StatefulWidget {
   const PaginaStream({
@@ -23,6 +26,29 @@ class PaginaStream extends StatefulWidget {
 
 class _PaginaStreamState extends State<PaginaStream> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
+  final MapController _mapController = MapController();
+  static const _configMetricas = ConfiguracionMetricasOperador.porDefecto;
+
+  static const double _zoomReferenciaMovil = 15.0;
+  static const double _zoomReferenciaWeb = 15.0;
+  static const double _tamanoBaseIconoMovil = 56.0;
+  static const double _tamanoBaseIconoWeb = 60.0;
+  static const double _tamanoBaseIconoDesktop = 58.0;
+  static const double _tamanoMinimoIconoMovil = 42.0;
+  static const double _tamanoMinimoIconoWeb = 46.0;
+  static const double _tamanoMinimoIconoDesktop = 44.0;
+  static const double _tamanoMaximoIconoMovil = 74.0;
+  static const double _tamanoMaximoIconoWeb = 84.0;
+  static const double _tamanoMaximoIconoDesktop = 80.0;
+  static const double _tamanoBaseTextoMovil = 10.0;
+  static const double _tamanoBaseTextoWeb = 10.5;
+  static const double _tamanoBaseTextoDesktop = 10.5;
+  static const double _tamanoMinimoTextoMovil = 8.5;
+  static const double _tamanoMinimoTextoWeb = 9.0;
+  static const double _tamanoMinimoTextoDesktop = 9.0;
+  static const double _tamanoMaximoTextoMovil = 12.0;
+  static const double _tamanoMaximoTextoWeb = 12.5;
+  static const double _tamanoMaximoTextoDesktop = 12.0;
 
   late final Stream<List<Map<String, dynamic>>> _trayectoriaStream;
   Timer? _timerRefrescoUI;
@@ -39,6 +65,7 @@ class _PaginaStreamState extends State<PaginaStream> {
 
   bool _cargandoInicial = true;
   bool _mostrandoDiagnostico = false;
+  double _zoomActual = 15.0;
   Future<List<Map<String, dynamic>>>? _diagnosticoFuture;
 
   @override
@@ -203,6 +230,7 @@ class _PaginaStreamState extends State<PaginaStream> {
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 760;
         final cardHeight = isMobile ? 120.0 : 100.0;
+        final alturaMinimaMapa = isMobile ? 320.0 : 420.0;
 
         return Scaffold(
           backgroundColor: Colors.black,
@@ -236,9 +264,14 @@ class _PaginaStreamState extends State<PaginaStream> {
             marcadoresVisibles[id] = Marker(
               key: ValueKey('live_$id'),
               point: posicion,
-              width: isMobile ? 74 : 90,
-              height: isMobile ? 68 : 80,
-              child: _buildIconoOperador(id, color, isMobile: isMobile),
+              width: _anchoMarcador(isMobile),
+              height: _altoMarcador(isMobile),
+              child: _buildIconoOperador(
+                id,
+                color,
+                isMobile: isMobile,
+                zoom: _zoomActual,
+              ),
             );
           }
 
@@ -259,53 +292,78 @@ class _PaginaStreamState extends State<PaginaStream> {
 
           final idsTarjetas = equiposInfo.keys.toList()
             ..sort((a, b) => _obtenerEtiquetaEquipo(a).compareTo(_obtenerEtiquetaEquipo(b)));
+          final circulosChute = _configMetricas.puntosDescarga
+              .map(
+                (punto) => CircleMarker(
+                  point: ll.LatLng(punto.latitud, punto.longitud),
+                  radius: _configMetricas.radioChuteMetros,
+                  useRadiusInMeter: true,
+                  color: Colors.orange.withOpacity(0.18),
+                  borderColor: Colors.orangeAccent,
+                  borderStrokeWidth: 2,
+                ),
+              )
+              .toList();
+          final marcadoresChute = _configMetricas.puntosDescarga
+              .asMap()
+              .entries
+              .map(
+                (entry) => Marker(
+                  point: ll.LatLng(entry.value.latitud, entry.value.longitud),
+                  width: 70,
+                  height: 28,
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.78),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orangeAccent.withOpacity(0.9)),
+                    ),
+                    child: Text(
+                      'Chute ${entry.key + 1}',
+                      style: const TextStyle(
+                        color: Colors.orangeAccent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList();
 
-          return Stack(
+          final mapa = Stack(
             children: [
               FlutterMap(
+                mapController: _mapController,
                 options: MapOptions(
                   initialCenter: _ultimaPosicion.isNotEmpty
                       ? _ultimaPosicion.values.first
                       : puntoTrabajoLatLng,
                   initialZoom: isMobile ? 14.5 : 15,
+                  onPositionChanged: (position, hasGesture) {
+                    final nuevoZoom = position.zoom;
+                    if (nuevoZoom == null) return;
+                    if ((nuevoZoom - _zoomActual).abs() < 0.01) return;
+                    setState(() {
+                      _zoomActual = nuevoZoom;
+                    });
+                  },
                 ),
                 children: [
                   TileLayer(
                     urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                   ),
+                  CircleLayer(circles: circulosChute),
                   PolylineLayer(polylines: polylines),
-                  MarkerLayer(markers: marcadoresVisibles.values.toList()),
+                  MarkerLayer(
+                    markers: [
+                      ...marcadoresChute,
+                      ...marcadoresVisibles.values,
+                    ],
+                  ),
                 ],
               ),
-                Positioned(
-                  bottom: isMobile ? 12 : 20,
-                  left: 0,
-                  right: 0,
-                  child: SizedBox(
-                    height: cardHeight,
-                    child: idsTarjetas.isEmpty
-                      ? Center(
-                          child: Container(
-                            padding: const EdgeInsets.all(15),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.8),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Text(
-                              'No hay equipos disponibles',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                        )
-                      : ListView(
-                          scrollDirection: Axis.horizontal,
-                          padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 15),
-                          children: idsTarjetas
-                              .map((id) => _buildCardKPI(id, isMobile: isMobile))
-                              .toList(),
-                        ),
-                  ),
-                ),
               Positioned(
                 top: 10,
                 left: 10,
@@ -376,7 +434,47 @@ class _PaginaStreamState extends State<PaginaStream> {
                   ),
                 ),
             ],
-              );
+          );
+
+          return Column(
+            children: [
+              Expanded(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: alturaMinimaMapa),
+                  child: mapa,
+                ),
+              ),
+              SizedBox(
+                height: cardHeight + (isMobile ? 12 : 20),
+                child: idsTarjetas.isEmpty
+                    ? Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(15),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Text(
+                            'No hay equipos disponibles',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      )
+                    : ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: EdgeInsets.fromLTRB(
+                          isMobile ? 10 : 15,
+                          isMobile ? 4 : 8,
+                          isMobile ? 10 : 15,
+                          isMobile ? 8 : 12,
+                        ),
+                        children: idsTarjetas
+                            .map((id) => _buildCardKPI(id, isMobile: isMobile))
+                            .toList(),
+                      ),
+              ),
+            ],
+          );
             },
           ),
         );
@@ -488,7 +586,19 @@ class _PaginaStreamState extends State<PaginaStream> {
     );
   }
 
-  Widget _buildIconoOperador(String id, Color color, {bool isMobile = false}) {
+  Widget _buildIconoOperador(
+    String id,
+    Color color, {
+    bool isMobile = false,
+    required double zoom,
+  }) {
+    final tamanoIcono = _tamanoIconoMarcador(isMobile: isMobile, zoom: zoom);
+    final tamanoTexto = _tamanoTextoMarcador(isMobile: isMobile, zoom: zoom);
+    final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+      nombre: equiposInfo[id]?['nombre']?.toString(),
+      codigo: equiposInfo[id]?['codigo_equipo_control']?.toString(),
+    );
+
     return Column(
       children: [
         Container(
@@ -500,16 +610,104 @@ class _PaginaStreamState extends State<PaginaStream> {
           ),
           child: Text(
             _obtenerEtiquetaEquipo(id),
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
-              fontSize: 10,
+              fontSize: tamanoTexto,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
-        Icon(Icons.local_shipping, color: color, size: isMobile ? 30 : 38),
+        Icon(iconoEquipo, color: color, size: tamanoIcono),
       ],
     );
+  }
+
+  double _tamanoIconoMarcador({required bool isMobile, required double zoom}) {
+    if (isMobile) {
+      return _tamanoProporcional(
+        zoom: zoom,
+        zoomReferencia: _zoomReferenciaMovil,
+        base: _tamanoBaseIconoMovil,
+        minimo: _tamanoMinimoIconoMovil,
+        maximo: _tamanoMaximoIconoMovil,
+        factorEscala: 4.0,
+      );
+    }
+
+    if (kIsWeb) {
+      return _tamanoProporcional(
+        zoom: zoom,
+        zoomReferencia: _zoomReferenciaWeb,
+        base: _tamanoBaseIconoWeb,
+        minimo: _tamanoMinimoIconoWeb,
+        maximo: _tamanoMaximoIconoWeb,
+        factorEscala: 4.5,
+      );
+    }
+
+    return _tamanoProporcional(
+      zoom: zoom,
+      zoomReferencia: _zoomReferenciaWeb,
+      base: _tamanoBaseIconoDesktop,
+      minimo: _tamanoMinimoIconoDesktop,
+      maximo: _tamanoMaximoIconoDesktop,
+      factorEscala: 4.2,
+    );
+  }
+
+  double _tamanoTextoMarcador({required bool isMobile, required double zoom}) {
+    if (isMobile) {
+      return _tamanoProporcional(
+        zoom: zoom,
+        zoomReferencia: _zoomReferenciaMovil,
+        base: _tamanoBaseTextoMovil,
+        minimo: _tamanoMinimoTextoMovil,
+        maximo: _tamanoMaximoTextoMovil,
+        factorEscala: 0.45,
+      );
+    }
+
+    if (kIsWeb) {
+      return _tamanoProporcional(
+        zoom: zoom,
+        zoomReferencia: _zoomReferenciaWeb,
+        base: _tamanoBaseTextoWeb,
+        minimo: _tamanoMinimoTextoWeb,
+        maximo: _tamanoMaximoTextoWeb,
+        factorEscala: 0.5,
+      );
+    }
+
+    return _tamanoProporcional(
+      zoom: zoom,
+      zoomReferencia: _zoomReferenciaWeb,
+      base: _tamanoBaseTextoDesktop,
+      minimo: _tamanoMinimoTextoDesktop,
+      maximo: _tamanoMaximoTextoDesktop,
+      factorEscala: 0.48,
+    );
+  }
+
+  double _tamanoProporcional({
+    required double zoom,
+    required double zoomReferencia,
+    required double base,
+    required double minimo,
+    required double maximo,
+    required double factorEscala,
+  }) {
+    final tamano = base + ((zoom - zoomReferencia) * factorEscala);
+    return tamano.clamp(minimo, maximo);
+  }
+
+  double _anchoMarcador(bool isMobile) {
+    final icono = _tamanoIconoMarcador(isMobile: isMobile, zoom: _zoomActual);
+    return isMobile ? icono * 1.9 : icono * 2.0;
+  }
+
+  double _altoMarcador(bool isMobile) {
+    final icono = _tamanoIconoMarcador(isMobile: isMobile, zoom: _zoomActual);
+    return isMobile ? icono * 1.75 : icono * 1.8;
   }
 
   String _obtenerEtiquetaEquipo(String id) {
@@ -593,9 +791,13 @@ class _PaginaStreamState extends State<PaginaStream> {
                     final estado = item['estado']?.toString() ?? 'desconocido';
                     final detalle = item['detalle']?.toString() ?? '';
                     final color = _colorEstadoDiagnostico(estado);
+                    final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+                      nombre: item['nombre']?.toString(),
+                      codigo: item['codigo_equipo_control']?.toString(),
+                    );
 
                     return ListTile(
-                      leading: Icon(Icons.local_shipping, color: color),
+                      leading: Icon(iconoEquipo, color: color),
                       title: Text(
                         nombre,
                         style: const TextStyle(color: Colors.white),

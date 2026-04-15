@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.dart';
+import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_historico.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_stream.dart';
@@ -20,6 +21,7 @@ const Color _colorSurfaceBlueAlt = Color(0xFF225B79);
 const Color _colorSurfaceGreen = Color(0xFF183B24);
 const Color _colorSurfaceAmber = Color(0xFF4A3511);
 const Color _colorSurfaceDark = Color(0xFF1E1E1E);
+const Color _colorDivider = Color(0xFF2A7AA1);
 
 class PaginaPerfilEquipo extends StatefulWidget {
   final ModeloEquipo equipo;
@@ -32,31 +34,60 @@ class PaginaPerfilEquipo extends StatefulWidget {
 class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
   final LimpiadorTrayectoria _limpiador = const LimpiadorTrayectoria();
+  final ServicioMetricasOperador _servicioMetricas =
+      const ServicioMetricasOperador();
+  late DateTime _fechaConsulta;
+
+  @override
+  void initState() {
+    super.initState();
+    _fechaConsulta = DateTime.now();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _colorNeutral900,
       appBar: AppBar(
-        title: const Text('Perfil de Operador'),
+        title: Text(
+          'Perfil de Operador · ${DateFormat('dd/MM/yyyy').format(_fechaConsulta)}',
+        ),
         backgroundColor: _colorNeutral900,
         foregroundColor: _colorPrimary,
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _mostrarControlesFecha,
+        backgroundColor: _colorPrimary,
+        foregroundColor: Colors.black,
+        icon: const Icon(Icons.calendar_month),
+        label: const Text(
+          'Fecha',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
       ),
       body: FutureBuilder<_ResumenPerfilEquipo>(
         future: _cargarResumenPerfil(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: Colors.orange),
             );
+          }
+
+          if (snapshot.hasError) {
+            return _buildErrorState(snapshot.error.toString());
+          }
+
+          if (!snapshot.hasData) {
+            return _buildErrorState('No se pudieron cargar los datos del operador.');
           }
 
           final resumen = snapshot.data!;
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              final availableWidth = constraints.maxWidth - 28;
-              final panelWidth = availableWidth.clamp(300.0, 360.0);
+              final availableWidth = (constraints.maxWidth - 32).clamp(320.0, 420.0);
+              final panelWidth = availableWidth.toDouble();
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -64,16 +95,23 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: panelWidth),
                     child: Container(
-                      padding: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: _colorNeutral800,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0xFF1C1C1E),
+                            Color(0xFF121212),
+                          ],
+                        ),
                         borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: Colors.white10),
+                        border: Border.all(color: _colorPrimary, width: 2),
                         boxShadow: const [
                           BoxShadow(
                             color: Colors.black54,
-                            blurRadius: 18,
-                            offset: Offset(0, 10),
+                            blurRadius: 24,
+                            offset: Offset(0, 14),
                           ),
                         ],
                       ),
@@ -82,7 +120,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
                         children: [
                           _buildStructuredDashboard(
                             resumen,
-                            panelWidth: panelWidth - 28,
+                            panelWidth: panelWidth - 32,
                           ),
                           const SizedBox(height: 18),
                           _buildActionButton(
@@ -105,21 +143,22 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   }
 
   Future<_ResumenPerfilEquipo> _cargarResumenPerfil() async {
-    final hoy = DateTime.now();
-    final resultados = await Future.wait([
-      _repositorio.obtenerTrayectoriaPorFecha(hoy),
-      _repositorio.streamUltimasConexiones().first,
-    ]);
-
-    final trayectoriasDia = (resultados[0] as List<Map<String, dynamic>>)
+    final trayectoriasDia = (await _repositorio.obtenerTrayectoriaPorFecha(_fechaConsulta))
         .where((punto) => punto['fk_emisor']?.toString() == widget.equipo.id)
         .toList()
       ..sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
 
-    final conexiones = (resultados[1] as List<Map<String, dynamic>>)
-        .where((punto) => punto['fk_emisor']?.toString() == widget.equipo.id)
-        .toList()
-      ..sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
+    final conexiones = <Map<String, dynamic>>[];
+    if (_esMismoDia(_fechaConsulta, DateTime.now())) {
+      conexiones.addAll(
+        (await _repositorio.obtenerUltimasPosiciones()).where(
+          (punto) => punto['fk_emisor']?.toString() == widget.equipo.id,
+        ),
+      );
+      conexiones.sort(
+        (a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()),
+      );
+    }
 
     final puntos = [...trayectoriasDia];
     for (final conexion in conexiones) {
@@ -143,39 +182,17 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     final activo = ultimoTiempo != null &&
         ahora.difference(ultimoTiempo).inSeconds.abs() <= 60;
 
-    var velocidadActual = 0.0;
-    var velocidadMaxima = 0.0;
-    var distanciaTotalKm = 0.0;
-    var sumaVelocidades = 0.0;
-    var tramosValidos = 0;
-
-    for (var i = 1; i < puntosValidos.length; i++) {
-      final anterior = _mapToPunto(puntosValidos[i - 1]);
-      final actual = _mapToPunto(puntosValidos[i]);
-      final velocidad = _limpiador.velocidadKmh(anterior, actual);
-      final distancia = _limpiador.distanciaMetros(
-        anterior.latitud,
-        anterior.longitud,
-        actual.latitud,
-        actual.longitud,
-      );
-
-      if (velocidad.isNaN || velocidad.isInfinite) continue;
-      if (velocidad > 120) continue;
-      if (distancia < 2) continue;
-
-      velocidadActual = velocidad;
-      if (velocidad > velocidadMaxima) {
-        velocidadMaxima = velocidad;
-      }
-      distanciaTotalKm += distancia / 1000;
-      sumaVelocidades += velocidad;
-      tramosValidos++;
-    }
-
     final conectadoDesde = activo && puntosValidos.isNotEmpty
         ? DateTime.tryParse(puntosValidos.first['tiempo']?.toString() ?? '')
         : ultimoTiempo;
+    final resumenMovimiento = _servicioMetricas.calcularResumenMovimiento(
+      equipo: widget.equipo,
+      puntosCrudos: puntos,
+    );
+    final metricas = _servicioMetricas.calcularMetricasDiarias(
+      equipo: widget.equipo,
+      puntosCrudos: puntos,
+    );
 
     return _ResumenPerfilEquipo(
       nombreCorto: _abreviarNombre(widget.equipo.nombreMostrar),
@@ -183,20 +200,31 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
       estado: activo ? 'ACTIVO' : 'INACTIVO',
       conectadoDesdeTexto: conectadoDesde == null
           ? 'Sin datos'
-          : DateFormat('hh:mm a').format(conectadoDesde),
-      velocidadActualKmh: velocidadActual,
-      velocidadMaximaKmh: velocidadMaxima,
-      velocidadPromedioKmh:
-          tramosValidos == 0 ? 0.0 : (sumaVelocidades / tramosValidos),
-      recorridoKm: distanciaTotalKm,
-      tramosValidos: tramosValidos,
-      registrosHoy: puntosValidos.length,
+          : DateFormat('dd/MM/yyyy\nhh:mm a').format(conectadoDesde),
+      velocidadActualKmh: resumenMovimiento.velocidadActualKmh,
+      velocidadMaximaKmh: resumenMovimiento.velocidadMaximaKmh,
+      velocidadPromedioKmh: resumenMovimiento.velocidadPromedioKmh,
+      recorridoKm: resumenMovimiento.recorridoKm,
+      tramosValidos: resumenMovimiento.tramosValidos,
+      registrosHoy: resumenMovimiento.registrosValidos,
       ultimoReporteTexto: ultimoTiempo == null
           ? 'Sin GPS'
           : DateFormat('HH:mm:ss').format(ultimoTiempo),
       latitud: (ultimo?['lat_grados'] as num?)?.toDouble(),
       longitud: (ultimo?['lon_grados'] as num?)?.toDouble(),
       altitud: ultimo?['alt_msnm']?.toString(),
+      ciclos: metricas.ciclos,
+      promedioCicloMin: metricas.promedioCicloMin,
+      modaCicloMin: metricas.modaCicloMin,
+      mediaCicloMin: metricas.mediaCicloMin,
+      maxCicloMin: metricas.maxCicloMin,
+      minCicloMin: metricas.minCicloMin,
+      sobretiempoTotalMin: metricas.sobretiempoTotalMin,
+      sobretiempoPermitidoMin: metricas.sobretiempoPermitidoMin,
+      pagoIneficiencia: metricas.pagoIneficiencia,
+      costoIneficiencia: metricas.costoIneficiencia,
+      almuerzoDesayunoInfo: metricas.almuerzoDesayunoInfo,
+      tieneMuestraSuficiente: metricas.tieneMuestraSuficiente,
     );
   }
 
@@ -226,6 +254,143 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     return '${limpio.substring(0, 14).toUpperCase()}...';
   }
 
+  bool _esMismoDia(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  void _cambiarFechaConsulta(int diasDelta) {
+    final ahora = DateTime.now();
+    final nuevaFecha = DateTime(
+      _fechaConsulta.year,
+      _fechaConsulta.month,
+      _fechaConsulta.day + diasDelta,
+    );
+
+    final hoy = DateTime(ahora.year, ahora.month, ahora.day);
+    final minima = DateTime(2024, 1, 1);
+    if (nuevaFecha.isAfter(hoy) || nuevaFecha.isBefore(minima)) {
+      return;
+    }
+
+    setState(() {
+      _fechaConsulta = nuevaFecha;
+    });
+  }
+
+  Future<void> _mostrarControlesFecha() async {
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF171717),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            void actualizar(int delta) {
+              _cambiarFechaConsulta(delta);
+              setModalState(() {});
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Cambiar fecha de prueba',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      DateFormat('dd/MM/yyyy').format(_fechaConsulta),
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildBottomSheetAction(
+                            label: '-1 dia',
+                            icon: Icons.chevron_left,
+                            onTap: () => actualizar(-1),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildBottomSheetAction(
+                            label: '+1 dia',
+                            icon: Icons.chevron_right,
+                            onTap: () => actualizar(1),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildBottomSheetAction(
+                            label: '-7 dias',
+                            icon: Icons.keyboard_double_arrow_left,
+                            onTap: () => actualizar(-7),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildBottomSheetAction(
+                            label: 'Hoy',
+                            icon: Icons.today,
+                            onTap: () {
+                              setState(() {
+                                _fechaConsulta = DateTime.now();
+                              });
+                              setModalState(() {});
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatearMinutosDashboard(double? valor, {String sufijo = 'min'}) {
+    if (valor == null) return 'Sin dato';
+    return '${valor.toStringAsFixed(1)} $sufijo';
+  }
+
+  String _formatearMontoDashboard(double? valor) {
+    if (valor == null) return 'Sin dato';
+    return 'S/ ${valor.toStringAsFixed(2)}';
+  }
+
   void _abrirTrackingEnVivo() {
     Navigator.push(
       context,
@@ -238,16 +403,27 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     );
   }
 
-  void _abrirHistorico() {
-    Navigator.push(
+  Future<void> _abrirHistorico() async {
+    final fechaRetornada = await Navigator.push<DateTime>(
       context,
       MaterialPageRoute(
         builder: (_) => PaginaHistorico(
           equipoIdFiltro: widget.equipo.id,
           nombreEquipoFiltro: widget.equipo.nombreMostrar,
+          fechaInicial: _fechaConsulta,
         ),
       ),
     );
+
+    if (!mounted || fechaRetornada == null) return;
+
+    setState(() {
+      _fechaConsulta = DateTime(
+        fechaRetornada.year,
+        fechaRetornada.month,
+        fechaRetornada.day,
+      );
+    });
   }
 
   Future<void> _mostrarOpcionesTracking() async {
@@ -318,7 +494,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
         _abrirTrackingEnVivo();
         break;
       case 'historico':
-        _abrirHistorico();
+        await _abrirHistorico();
         break;
       default:
         break;
@@ -428,86 +604,48 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     _ResumenPerfilEquipo resumen, {
     required double panelWidth,
   }) {
-    const spacing = 10.0;
-    final stackedSmallWidth = (panelWidth * 0.37).clamp(108.0, 132.0);
+    const spacing = 16.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildTopNameCard(resumen),
         SizedBox(height: spacing),
-        Row(
-          children: [
-            Expanded(
-              child: _buildInfoTile(
-                title: 'Estado',
-                value: resumen.estado,
-                accent:
-                    resumen.estado == 'ACTIVO'
-                        ? const Color(0xFF9BE7A4)
-                        : const Color(0xFFFF6B6B),
-                background:
-                    resumen.estado == 'ACTIVO'
-                        ? _colorSurfaceGreen
-                        : const Color(0xFF4A1F24),
-                border:
-                    resumen.estado == 'ACTIVO'
-                        ? _colorSecondary
-                        : const Color(0xFFB23A48),
-              ),
-            ),
-            SizedBox(width: spacing),
-            Expanded(
-              flex: 2,
-              child: _buildInfoTile(
-                title: 'Conectado desde',
-                value: resumen.conectadoDesdeTexto,
-                accent: Colors.white,
-                background: _colorSurfaceDark,
-                border: _colorPrimary.withOpacity(0.35),
-              ),
-            ),
-          ],
+        _buildStatusHeader(
+          estado: resumen.estado,
+          conectadoDesdeTexto: resumen.conectadoDesdeTexto,
         ),
         SizedBox(height: spacing),
         SizedBox(
-          height: 158,
+          height: 176,
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                flex: 5,
-                child: _buildBigValueTile(
+                child: _buildHighlightedMetric(
                   title: 'Velocidad',
                   value: '${resumen.velocidadActualKmh.toStringAsFixed(1)} km/h',
-                  accent: _colorPrimary,
-                  background: _colorSurfaceAmber,
-                  border: _colorTertiary.withOpacity(0.5),
+                  accent: _colorPrimarySoft,
+                  height: 176,
                 ),
               ),
-              SizedBox(width: spacing),
-              SizedBox(
-                width: stackedSmallWidth,
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   children: [
                     Expanded(
-                      child: _buildCompactInfoTile(
+                      child: _buildMetricLineBlock(
                         title: 'Vel Max',
                         value:
                             '${resumen.velocidadMaximaKmh.toStringAsFixed(1)} km/h',
-                        accent: Colors.white,
-                        background: _colorSurfaceBlueAlt,
-                        border: _colorPrimary.withOpacity(0.3),
                       ),
                     ),
-                    SizedBox(height: spacing),
+                    const SizedBox(height: 10),
                     Expanded(
-                      child: _buildCompactInfoTile(
+                      child: _buildMetricLineBlock(
                         title: 'Vel Prom',
                         value:
                             '${resumen.velocidadPromedioKmh.toStringAsFixed(1)} km/h',
-                        accent: Colors.white,
-                        background: _colorSurfaceBlue,
-                        border: _colorPrimary.withOpacity(0.2),
                       ),
                     ),
                   ],
@@ -517,99 +655,66 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           ),
         ),
         SizedBox(height: spacing),
-        _buildWideTile(
-          title: 'Recorrido',
-          value: '${resumen.recorridoKm.toStringAsFixed(2)} km',
-          subtitle:
-              '${resumen.tramosValidos} tramos validos | ${resumen.registrosHoy} registros hoy',
-          background: _colorSurfaceDark,
-          border: _colorSecondary.withOpacity(0.35),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 290),
+            child: _buildRecorridoBlock(
+              recorrido: '${resumen.recorridoKm.toStringAsFixed(2)} km',
+              detalle:
+                  '${resumen.tramosValidos} tramos validos | ${resumen.registrosHoy} registros hoy',
+            ),
+          ),
         ),
-        SizedBox(height: spacing),
-        Row(
-          children: [
-            Expanded(
-              child: _buildInfoTile(
-                title: 'Ciclos',
-                value: 'Sin dato',
-                accent: Colors.white70,
-                background: _colorSurfaceBlue,
-                border: Colors.white10,
-              ),
-            ),
-            SizedBox(width: spacing),
-            Expanded(
-              child: _buildInfoTile(
-                title: 'Promedio ciclo tiempo',
-                value: 'Sin dato',
-                accent: Colors.white70,
-                background: _colorSurfaceBlueAlt,
-                border: Colors.white10,
-              ),
-            ),
-          ],
+        SizedBox(height: spacing + 2),
+        _buildStatsRow(
+          leftTitle: 'Ciclos',
+          leftValue: resumen.ciclos.toString(),
+          rightTitle: 'Promedio ciclo tiempo',
+          rightValue: _formatearMinutosDashboard(resumen.promedioCicloMin),
         ),
-        SizedBox(height: spacing),
-        Row(
-          children: [
-            Expanded(
-              child: _buildInfoTile(
-                title: 'Max',
-                value: 'Sin dato',
-                accent: Colors.white70,
-                background: _colorSurfaceAmber,
-                border: _colorTertiary.withOpacity(0.35),
-              ),
-            ),
-            SizedBox(width: spacing),
-            Expanded(
-              child: _buildInfoTile(
-                title: 'Min',
-                value: 'Sin dato',
-                accent: Colors.white70,
-                background: _colorSurfaceBlue,
-                border: Colors.white10,
-              ),
-            ),
-          ],
+        const SizedBox(height: 12),
+        _buildStatsRow(
+          leftTitle: 'Max',
+          leftValue: _formatearMinutosDashboard(resumen.maxCicloMin),
+          rightTitle: 'Min',
+          rightValue: _formatearMinutosDashboard(resumen.minCicloMin),
         ),
+        const SizedBox(height: 12),
+        _buildHorizontalDivider(),
         SizedBox(height: spacing),
         SizedBox(
-          height: 158,
+          height: 176,
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                flex: 5,
-                child: _buildBigValueTile(
+                child: _buildHighlightedMetric(
                   title: 'Sobretiempo',
-                  value: 'Sin dato',
-                  accent: Colors.white70,
-                  background: _colorSurfaceDark,
-                  border: _colorPrimary.withOpacity(0.28),
+                  value: _formatearMinutosDashboard(
+                    resumen.sobretiempoTotalMin,
+                    sufijo: 'min',
+                  ),
+                  accent: Colors.white,
+                  height: 176,
                 ),
               ),
-              SizedBox(width: spacing),
-              SizedBox(
-                width: stackedSmallWidth,
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   children: [
                     Expanded(
-                      child: _buildCompactInfoTile(
+                      child: _buildStackLineBlock(
                         title: 'Pago de ineficiencia',
-                        value: 'Sin dato',
-                        accent: Colors.white70,
-                        background: _colorSurfaceAmber,
-                        border: _colorPrimary.withOpacity(0.45),
+                        value: _formatearMontoDashboard(resumen.pagoIneficiencia),
                       ),
                     ),
-                    SizedBox(height: spacing),
+                    const SizedBox(height: 10),
                     Expanded(
-                      child: _buildCompactInfoTile(
+                      child: _buildStackLineBlock(
                         title: 'Costo de ineficiencia',
-                        value: 'Sin dato',
-                        accent: Colors.white70,
-                        background: _colorSurfaceAmber,
-                        border: _colorPrimary.withOpacity(0.45),
+                        value: _formatearMontoDashboard(
+                          resumen.costoIneficiencia,
+                        ),
                       ),
                     ),
                   ],
@@ -619,134 +724,87 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           ),
         ),
         SizedBox(height: spacing),
-        _buildWideTile(
-          title: 'Resumen operativo',
-          value: 'Almuerzo: Sin dato',
-          subtitle:
-              'Desayuno: Sin dato\nSobretiempos permitidos: Sin dato',
-          background: _colorSurfaceBlueAlt,
-          border: _colorPrimary.withOpacity(0.28),
+        _buildMealTitle('Sobretiempos permitidos.'),
+        const SizedBox(height: 8),
+        _buildMealPair(
+          almuerzo:
+              'Total: ${resumen.sobretiempoPermitidoMin.toStringAsFixed(1)} min',
+          desayuno: 'No separado',
         ),
       ],
     );
   }
 
-  Widget _buildTopNameCard(_ResumenPerfilEquipo resumen) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [_colorSurfaceBlueAlt, _colorSurfaceBlue],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _colorPrimary.withOpacity(0.35), width: 1.4),
-      ),
-      child: Text(
-        resumen.nombreCorto,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
+  Widget _buildErrorState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _colorNeutral800,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.redAccent.withOpacity(0.35)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.orange, size: 42),
+                const SizedBox(height: 12),
+                const Text(
+                  'No pudimos cargar este perfil',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => setState(() {}),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _colorPrimary,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Reintentar'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInfoTile({
-    required String title,
-    required String value,
-    required Color accent,
-    Color background = _colorSurfaceBlue,
-    Color border = _colorNeutral700,
-  }) {
+  Widget _buildTopNameCard(_ResumenPerfilEquipo resumen) {
     return Container(
-      padding: const EdgeInsets.all(14),
-      constraints: const BoxConstraints(minHeight: 96),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
       decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border, width: 1.4),
+        color: const Color(0xFF171717),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white12),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            title,
+            resumen.nombreCorto,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactInfoTile({
-    required String title,
-    required String value,
-    required Color accent,
-    Color background = _colorSurfaceBlue,
-    Color border = _colorNeutral700,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border, width: 1.4),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Flexible(
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -766,14 +824,14 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            background.withOpacity(0.92),
-            background,
+            background.withOpacity(0.38),
+            background.withOpacity(0.24),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border, width: 1.4),
+        border: Border.all(color: border.withOpacity(0.55), width: 1.2),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -782,8 +840,8 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
             title,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
+              color: Colors.white70,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -793,13 +851,13 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
             child: Text(
               value,
               textAlign: TextAlign.center,
-              maxLines: 2,
-              style: TextStyle(
-                color: accent,
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
+                maxLines: 2,
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
           ),
         ],
       ),
@@ -816,9 +874,9 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: background,
+        color: background.withOpacity(0.14),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border, width: 1.4),
+        border: Border.all(color: border.withOpacity(0.18), width: 1),
       ),
       child: Column(
         children: [
@@ -826,8 +884,8 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
             title,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
+              color: Colors.white70,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -837,8 +895,8 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              fontSize: 21,
+              fontWeight: FontWeight.w700,
             ),
           ),
           if (subtitle != null) ...[
@@ -855,6 +913,404 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildLinePair({
+    required String leftTitle,
+    required String leftValue,
+    required String rightTitle,
+    required String rightValue,
+    Color leftAccent = Colors.white,
+    Color rightAccent = Colors.white,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildLineValue(
+            title: leftTitle,
+            value: leftValue,
+            accent: leftAccent,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          width: 1.2,
+          height: 62,
+          color: _colorDivider.withOpacity(0.9),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildLineValue(
+            title: rightTitle,
+            value: rightValue,
+            accent: rightAccent,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLineValue({
+    required String title,
+    required String value,
+    Color accent = Colors.white,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFFD5C2A4),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: accent,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            height: 0.95,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHorizontalDivider() {
+    return Container(
+      height: 2,
+      color: _colorPrimary.withOpacity(0.92),
+    );
+  }
+
+  Widget _buildHighlightedMetric({
+    required String title,
+    required String value,
+    required Color accent,
+    required double height,
+  }) {
+    return Container(
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF221E18),
+            Color(0xFF141414),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _colorPrimarySoft.withOpacity(0.9), width: 2),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFFD5C2A4),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: accent,
+              fontSize: 26,
+              fontWeight: FontWeight.w700,
+              height: 0.95,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsRow({
+    required String leftTitle,
+    required String leftValue,
+    required String rightTitle,
+    required String rightValue,
+  }) {
+    return Column(
+      children: [
+        _buildHorizontalDivider(),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildLineValue(title: leftTitle, value: leftValue),
+            ),
+            Container(
+              width: 1.5,
+              height: 58,
+              color: _colorPrimary.withOpacity(0.92),
+            ),
+            Expanded(
+              child: _buildLineValue(title: rightTitle, value: rightValue),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimpleLineItem(String title, String value) {
+    return Column(
+      children: [
+        Text(
+          '$title: $value',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _buildHorizontalDivider(),
+      ],
+    );
+  }
+
+  Widget _buildStatusHeader({
+    required String estado,
+    required String conectadoDesdeTexto,
+  }) {
+    final accent = estado == 'ACTIVO'
+        ? const Color(0xFF9BE7A4)
+        : const Color(0xFFFF6B6B);
+
+    return SizedBox(
+      height: 70,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  estado,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    height: 0.95,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 1.5,
+            height: 64,
+            color: _colorPrimary.withOpacity(0.92),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Desde',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFFD5C2A4),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  conectadoDesdeTexto,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricLineBlock({
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFFD5C2A4),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFFFFB648),
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildHorizontalDivider(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecorridoBlock({
+    required String recorrido,
+    required String detalle,
+  }) {
+    return Column(
+      children: [
+        const Text(
+          'Recorrido',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _buildHorizontalDivider(),
+        const SizedBox(height: 12),
+        Text(
+          recorrido,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          detalle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFFD5C2A4),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            height: 1.35,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStackLineBlock({
+    required String title,
+    required String value,
+  }) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          value,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _buildHorizontalDivider(),
+      ],
+    );
+  }
+
+  Widget _buildMealTitle(String title) {
+    return Column(
+      children: [
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xFFD5C2A4),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _buildHorizontalDivider(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMealPair({
+    required String almuerzo,
+    required String desayuno,
+  }) {
+    return Column(
+      children: [
+        Text(
+          'Almuerzo: $almuerzo',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Desayuno: $desayuno',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1128,16 +1584,18 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           icon: Icon(icon),
           label: Text(label),
         style: ElevatedButton.styleFrom(
-          backgroundColor:
-              filled ? _colorPrimary : _colorNeutral700,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+          backgroundColor: _colorPrimary,
+          foregroundColor: const Color(0xFF121212),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
           ),
-          side:
-              filled
-                  ? const BorderSide(color: _colorPrimarySoft, width: 1.2)
-                  : const BorderSide(color: Colors.white12, width: 1.2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          side: const BorderSide(color: Color(0xFFFFD089), width: 3),
+          elevation: 8,
+          shadowColor: Colors.black54,
         ),
       ),
     );
@@ -1184,6 +1642,18 @@ class _ResumenPerfilEquipo {
     required this.latitud,
     required this.longitud,
     required this.altitud,
+    required this.ciclos,
+    required this.promedioCicloMin,
+    required this.modaCicloMin,
+    required this.mediaCicloMin,
+    required this.maxCicloMin,
+    required this.minCicloMin,
+    required this.sobretiempoTotalMin,
+    required this.sobretiempoPermitidoMin,
+    required this.pagoIneficiencia,
+    required this.costoIneficiencia,
+    required this.almuerzoDesayunoInfo,
+    required this.tieneMuestraSuficiente,
   });
 
   final String nombreCorto;
@@ -1200,4 +1670,16 @@ class _ResumenPerfilEquipo {
   final double? latitud;
   final double? longitud;
   final String? altitud;
+  final int ciclos;
+  final double? promedioCicloMin;
+  final double? modaCicloMin;
+  final double? mediaCicloMin;
+  final double? maxCicloMin;
+  final double? minCicloMin;
+  final double? sobretiempoTotalMin;
+  final double sobretiempoPermitidoMin;
+  final double? pagoIneficiencia;
+  final double? costoIneficiencia;
+  final String almuerzoDesayunoInfo;
+  final bool tieneMuestraSuficiente;
 }

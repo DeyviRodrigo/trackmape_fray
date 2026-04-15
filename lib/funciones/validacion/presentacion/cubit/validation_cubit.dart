@@ -18,9 +18,13 @@ class ValidationCubit extends Cubit<ValidationState> {
   final RepositorioRendimientoOperacional _repositorio;
   final ProcesadorRendimientoOperacional _procesador;
 
-  static const double _velocidadVerdeMaxima = 15.0;
-  static const double _velocidadNaranjaMaxima = 35.0;
-  static const double _velocidadMaximaPermitida = 100.0;
+  static const double _velocidadVerdeMaxima = 18.0;
+  static const double _velocidadNaranjaMaxima = 30.0;
+  static const double _velocidadRojaMaxima = 40.0;
+  static const double _saltoFactorPromedioMovil = 3.0;
+  static const double _saltoAceleracionMaxima = 15.0;
+  static const double _velocidadAltaInconsistente = 40.0;
+  static const double _distanciaAbsurdaMetros = 300.0;
 
   Future<void> cargarEquipos() async {
     emit(
@@ -45,9 +49,12 @@ class ValidationCubit extends Cubit<ValidationState> {
               filtrados.isNotEmpty ? filtrados.first.idEquipoControl : null,
           puntos: const [],
           segmentos: const [],
+          segmentoSeleccionado: null,
           detalles: const [],
           totalRegistrosBrutos: 0,
           totalRegistrosValidos: 0,
+          tramosDescartados: 0,
+          velocidadCorregidaPromedioKmh: 0,
           cargandoEquipo: false,
           clearError: true,
           clearResumen: true,
@@ -111,20 +118,25 @@ class ValidationCubit extends Cubit<ValidationState> {
         fecha: state.fechaSeleccionada,
       );
 
-      final puntosLimpios = _limpiarPuntos(puntosCrudos);
-      final segmentos = _construirSegmentos(puntosLimpios);
-      final detalles = _construirDetalles(puntosLimpios);
-      final resumen = _procesador.procesar(puntosLimpios);
+      final puntosCrudosValidos = puntosCrudos.where(_coordenadaEsValida).toList()
+        ..sort((a, b) => a.tiempo.compareTo(b.tiempo));
+      final procesamiento = _processFilteredSegments(puntosCrudosValidos);
+      final segmentos = procesamiento.segmentos;
+      final detalles = _construirDetalles(segmentos);
+      final resumen = _procesador.procesar(puntosCrudosValidos);
 
       emit(
         state.copyWith(
           status: ValidationStatus.success,
-          puntos: puntosLimpios,
+          puntos: puntosCrudosValidos,
           segmentos: segmentos,
+          segmentoSeleccionado: segmentos.isNotEmpty ? segmentos.first : null,
           detalles: detalles.reversed.toList(),
           resumen: resumen,
           totalRegistrosBrutos: puntosCrudos.length,
-          totalRegistrosValidos: puntosLimpios.length,
+          totalRegistrosValidos: puntosCrudosValidos.length,
+          tramosDescartados: procesamiento.tramosDescartados,
+          velocidadCorregidaPromedioKmh: procesamiento.velocidadCorregidaPromedioKmh,
           cargandoEquipo: false,
           clearError: true,
         ),
@@ -140,113 +152,66 @@ class ValidationCubit extends Cubit<ValidationState> {
     }
   }
 
-  List<PuntoRendimiento> _limpiarPuntos(List<PuntoRendimiento> puntos) {
-    if (puntos.isEmpty) {
-      return const [];
-    }
-
-    final ordenados = [...puntos]..sort((a, b) => a.tiempo.compareTo(b.tiempo));
-    final resultado = <PuntoRendimiento>[];
-
-    for (final punto in ordenados) {
-      if (!_coordenadaEsValida(punto)) {
-        continue;
-      }
-
-      if (resultado.isEmpty) {
-        resultado.add(punto);
-        continue;
-      }
-
-      final anterior = resultado.last;
-      final deltaSegundos = punto.tiempo.difference(anterior.tiempo).inSeconds;
-      if (deltaSegundos <= 0) {
-        continue;
-      }
-
-      final distancia = _distanciaMetros(anterior, punto);
-      final velocidad = (distancia / deltaSegundos) * 3.6;
-
-      if (velocidad > _velocidadMaximaPermitida) {
-        continue;
-      }
-
-      resultado.add(punto);
-    }
-
-    return resultado;
+  void seleccionarSegmento(SegmentoTrayectoria segmento) {
+    emit(
+      state.copyWith(
+        segmentoSeleccionado: segmento,
+      ),
+    );
   }
 
-  List<SegmentoTrayectoria> _construirSegmentos(List<PuntoRendimiento> puntos) {
-    if (puntos.length < 2) {
-      return const [];
+  void seleccionarSegmentoMasCercano({
+    required double latitud,
+    required double longitud,
+  }) {
+    if (state.segmentos.isEmpty) {
+      return;
     }
 
-    final segmentos = <SegmentoTrayectoria>[];
+    SegmentoTrayectoria? mejor;
+    double? mejorDistancia;
 
-    for (var i = 1; i < puntos.length; i++) {
-      final inicio = puntos[i - 1];
-      final fin = puntos[i];
-      final deltaSegundos = fin.tiempo.difference(inicio.tiempo).inSeconds;
-      if (deltaSegundos <= 0) {
-        continue;
-      }
-
-      final distanciaMetros = _distanciaMetros(inicio, fin);
-      final velocidadKmh = (distanciaMetros / deltaSegundos) * 3.6;
-
-      segmentos.add(
-        SegmentoTrayectoria(
-          inicio: inicio,
-          fin: fin,
-          color: _colorPorVelocidad(velocidadKmh),
-          velocidadKmh: velocidadKmh,
-          distanciaMetros: distanciaMetros,
-        ),
+    for (final segmento in state.segmentos.where((item) => item.esVisible)) {
+      final distancia = _distanciaPuntoASegmentoMetros(
+        latitud: latitud,
+        longitud: longitud,
+        latitudInicio: segmento.latitudInicioDibujo,
+        longitudInicio: segmento.longitudInicioDibujo,
+        latitudFin: segmento.latitudFinDibujo,
+        longitudFin: segmento.longitudFinDibujo,
       );
+
+      if (mejorDistancia == null || distancia < mejorDistancia) {
+        mejorDistancia = distancia;
+        mejor = segmento;
+      }
     }
 
-    return segmentos;
+    if (mejor != null && mejorDistancia != null && mejorDistancia <= 25.0) {
+      seleccionarSegmento(mejor);
+    }
   }
 
   List<PuntoRendimientoDetallado> _construirDetalles(
-    List<PuntoRendimiento> puntos,
+    List<SegmentoTrayectoria> segmentos,
   ) {
-    if (puntos.isEmpty) {
+    if (segmentos.isEmpty) {
       return const [];
     }
 
     final detalles = <PuntoRendimientoDetallado>[];
 
-    for (var i = 0; i < puntos.length; i++) {
-      if (i == 0) {
-        detalles.add(
-          PuntoRendimientoDetallado(
-            punto: puntos[i],
-            velocidadKmh: 0,
-            distanciaMetros: 0,
-            color: Colors.greenAccent,
-            estado: 'Inicio',
-          ),
-        );
-        continue;
-      }
-
-      final anterior = puntos[i - 1];
-      final actual = puntos[i];
-      final deltaSegundos = actual.tiempo.difference(anterior.tiempo).inSeconds;
-      final distanciaMetros = deltaSegundos <= 0 ? 0.0 : _distanciaMetros(anterior, actual);
-      final velocidadKmh =
-          deltaSegundos <= 0 ? 0.0 : (distanciaMetros / deltaSegundos) * 3.6;
-      final color = _colorPorVelocidad(velocidadKmh);
-
+    for (final segmento in segmentos) {
       detalles.add(
         PuntoRendimientoDetallado(
-          punto: actual,
-          velocidadKmh: velocidadKmh,
-          distanciaMetros: distanciaMetros,
-          color: color,
-          estado: _estadoPorVelocidad(velocidadKmh),
+          tiempoInicio: segmento.inicio.tiempo,
+          punto: segmento.fin,
+          velocidadKmh: segmento.velocidadKmh,
+          distanciaMetros: segmento.distanciaMetros,
+          deltaSegundos: segmento.deltaSegundos,
+          color: segmento.color,
+          estado: segmento.estado,
+          motivo: segmento.motivo,
         ),
       );
     }
@@ -254,27 +219,151 @@ class ValidationCubit extends Cubit<ValidationState> {
     return detalles;
   }
 
+  _ResultadoSegmentos _processFilteredSegments(List<PuntoRendimiento> puntos) {
+    if (puntos.length < 2) {
+      return const _ResultadoSegmentos(
+        segmentos: [],
+        tramosDescartados: 0,
+        velocidadCorregidaPromedioKmh: 0,
+      );
+    }
+
+    final suavizados = _suavizarPuntos(puntos);
+    final segmentos = <SegmentoTrayectoria>[];
+    final ultimasDistanciasValidas = <double>[];
+    double? velocidadAnteriorValida;
+    _PuntoSuavizado? ultimoPuntoVisibleDibujo;
+    var tramosDescartados = 0;
+    var distanciaCorregidaMetros = 0.0;
+    var tiempoCorregidoSegundos = 0;
+
+    for (var i = 1; i < puntos.length; i++) {
+      final inicio = puntos[i - 1];
+      final fin = puntos[i];
+      final deltaSegundos = fin.tiempo.difference(inicio.tiempo).inSeconds;
+      final distanciaMetros = deltaSegundos <= 0 ? 0.0 : _distanciaMetros(inicio, fin);
+      final velocidadKmh =
+          deltaSegundos <= 0 ? 0.0 : (distanciaMetros / deltaSegundos) * 3.6;
+
+      final promedioMovilMetros = ultimasDistanciasValidas.isEmpty
+          ? 0.0
+          : ultimasDistanciasValidas.reduce((a, b) => a + b) /
+              ultimasDistanciasValidas.length;
+
+      final saltoGps = promedioMovilMetros > 0 &&
+          distanciaMetros > (_saltoFactorPromedioMovil * promedioMovilMetros);
+      final aceleracionBrusca = velocidadAnteriorValida != null &&
+          (velocidadKmh - velocidadAnteriorValida!).abs() >
+              _saltoAceleracionMaxima;
+      final coordenadasInvalidas = !_coordenadaEsValida(inicio) || !_coordenadaEsValida(fin);
+      final velocidadAltaInconsistente =
+          velocidadKmh > _velocidadAltaInconsistente &&
+              (saltoGps || aceleracionBrusca);
+      final distanciaAbsurda = distanciaMetros > _distanciaAbsurdaMetros;
+
+      String estado;
+      String motivo;
+      bool esVisible;
+
+      if (deltaSegundos <= 0) {
+        estado = 'descartado';
+        motivo = 'tiempo <= 0';
+        esVisible = false;
+      } else if (coordenadasInvalidas) {
+        estado = 'descartado';
+        motivo = 'coordenadas invalidas';
+        esVisible = false;
+      } else if (distanciaAbsurda || (saltoGps && velocidadAltaInconsistente)) {
+        estado = 'descartado';
+        motivo = saltoGps ? 'salto GPS' : 'distancia absurda';
+        esVisible = false;
+      } else if (aceleracionBrusca) {
+        estado = 'sospechoso';
+        motivo = 'aceleracion brusca';
+        esVisible = true;
+      } else if (saltoGps) {
+        estado = 'sospechoso';
+        motivo = 'salto GPS';
+        esVisible = true;
+      } else if (velocidadAltaInconsistente) {
+        estado = 'sospechoso';
+        motivo = 'velocidad alta inconsistente';
+        esVisible = true;
+      } else {
+        estado = 'valido';
+        motivo = 'tramo coherente';
+        esVisible = true;
+      }
+
+      final color = _colorPorSegmento(velocidadKmh, estado);
+      final dibujoInicio = ultimoPuntoVisibleDibujo ?? suavizados[i - 1];
+      final dibujoFin = suavizados[i];
+
+      segmentos.add(
+        SegmentoTrayectoria(
+          inicio: inicio,
+          fin: fin,
+          color: color,
+          velocidadKmh: velocidadKmh,
+          distanciaMetros: distanciaMetros,
+          deltaSegundos: deltaSegundos,
+          estado: estado,
+          motivo: motivo,
+          esVisible: esVisible,
+          latitudInicioDibujo: dibujoInicio.latitud,
+          longitudInicioDibujo: dibujoInicio.longitud,
+          latitudFinDibujo: dibujoFin.latitud,
+          longitudFinDibujo: dibujoFin.longitud,
+        ),
+      );
+
+      if (esVisible) {
+        ultimoPuntoVisibleDibujo = dibujoFin;
+      }
+
+      if (estado == 'descartado') {
+        tramosDescartados++;
+      } else {
+        distanciaCorregidaMetros += distanciaMetros;
+        tiempoCorregidoSegundos += deltaSegundos;
+      }
+
+      if (estado == 'valido') {
+        ultimasDistanciasValidas.add(distanciaMetros);
+        if (ultimasDistanciasValidas.length > 5) {
+          ultimasDistanciasValidas.removeAt(0);
+        }
+        velocidadAnteriorValida = velocidadKmh;
+      }
+    }
+
+    final velocidadCorregidaPromedioKmh = tiempoCorregidoSegundos > 0
+        ? (distanciaCorregidaMetros / tiempoCorregidoSegundos) * 3.6
+        : 0.0;
+
+    return _ResultadoSegmentos(
+      segmentos: segmentos,
+      tramosDescartados: tramosDescartados,
+      velocidadCorregidaPromedioKmh: velocidadCorregidaPromedioKmh,
+    );
+  }
+
   bool _coordenadaEsValida(PuntoRendimiento punto) {
     if (punto.latitud == 0 || punto.longitud == 0) {
       return false;
     }
-
     if (punto.latitud < -90 || punto.latitud > 90) {
       return false;
     }
-
     if (punto.longitud < -180 || punto.longitud > 180) {
       return false;
     }
-
     if (punto.latitud < -20 || punto.latitud > -10) {
       return false;
     }
-
     if (punto.longitud < -75 || punto.longitud > -65) {
       return false;
     }
-
     return true;
   }
 
@@ -288,14 +377,59 @@ class ValidationCubit extends Cubit<ValidationState> {
     return Colors.redAccent;
   }
 
-  String _estadoPorVelocidad(double velocidadKmh) {
+  Color _colorPorSegmento(double velocidadKmh, String estado) {
+    if (estado == 'descartado') {
+      return Colors.grey.withOpacity(0.35);
+    }
+    final colorBase = _colorBasePorVelocidad(velocidadKmh);
+    if (estado == 'sospechoso') {
+      return colorBase.withOpacity(0.75);
+    }
+    return colorBase;
+  }
+
+  Color _colorBasePorVelocidad(double velocidadKmh) {
     if (velocidadKmh <= _velocidadVerdeMaxima) {
-      return 'Normal';
+      return Colors.lightGreenAccent;
     }
     if (velocidadKmh <= _velocidadNaranjaMaxima) {
-      return 'Atencion';
+      return Colors.orangeAccent;
     }
-    return 'Critico';
+    if (velocidadKmh <= _velocidadRojaMaxima) {
+      return Colors.redAccent;
+    }
+    return Colors.redAccent;
+  }
+
+  List<_PuntoSuavizado> _suavizarPuntos(List<PuntoRendimiento> puntos) {
+    final suavizados = <_PuntoSuavizado>[];
+
+    for (var i = 0; i < puntos.length; i++) {
+      if (i == 0 || i == puntos.length - 1) {
+        suavizados.add(
+          _PuntoSuavizado(
+            latitud: puntos[i].latitud,
+            longitud: puntos[i].longitud,
+          ),
+        );
+        continue;
+      }
+
+      final anterior = puntos[i - 1];
+      final actual = puntos[i];
+      final siguiente = puntos[i + 1];
+
+      suavizados.add(
+        _PuntoSuavizado(
+          latitud:
+              (anterior.latitud + actual.latitud + siguiente.latitud) / 3,
+          longitud:
+              (anterior.longitud + actual.longitud + siguiente.longitud) / 3,
+        ),
+      );
+    }
+
+    return suavizados;
   }
 
   double _distanciaMetros(PuntoRendimiento a, PuntoRendimiento b) {
@@ -308,4 +442,65 @@ class ValidationCubit extends Cubit<ValidationState> {
             2;
     return 12742 * math.asin(math.sqrt(x)) * 1000;
   }
+
+  double _distanciaPuntoASegmentoMetros({
+    required double latitud,
+    required double longitud,
+    required double latitudInicio,
+    required double longitudInicio,
+    required double latitudFin,
+    required double longitudFin,
+  }) {
+    final px = longitud;
+    final py = latitud;
+    final ax = longitudInicio;
+    final ay = latitudInicio;
+    final bx = longitudFin;
+    final by = latitudFin;
+
+    final abx = bx - ax;
+    final aby = by - ay;
+    final ab2 = (abx * abx) + (aby * aby);
+
+    double t;
+    if (ab2 == 0) {
+      t = 0;
+    } else {
+      t = (((px - ax) * abx) + ((py - ay) * aby)) / ab2;
+      t = t.clamp(0.0, 1.0);
+    }
+
+    final proyectadoX = ax + (abx * t);
+    final proyectadoY = ay + (aby * t);
+
+    const factorLat = 111320.0;
+    final factorLon =
+        factorLat * math.cos(((latitudInicio + latitudFin) / 2) * (math.pi / 180));
+
+    final dx = (px - proyectadoX) * factorLon;
+    final dy = (py - proyectadoY) * factorLat;
+    return math.sqrt((dx * dx) + (dy * dy));
+  }
+}
+
+class _PuntoSuavizado {
+  final double latitud;
+  final double longitud;
+
+  const _PuntoSuavizado({
+    required this.latitud,
+    required this.longitud,
+  });
+}
+
+class _ResultadoSegmentos {
+  final List<SegmentoTrayectoria> segmentos;
+  final int tramosDescartados;
+  final double velocidadCorregidaPromedioKmh;
+
+  const _ResultadoSegmentos({
+    required this.segmentos,
+    required this.tramosDescartados,
+    required this.velocidadCorregidaPromedioKmh,
+  });
 }

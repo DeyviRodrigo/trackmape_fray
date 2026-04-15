@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 
 class HojaSimulacion extends StatefulWidget {
@@ -595,6 +596,10 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
   Widget _buildIcono(String id) {
     final nombre = _obtenerEtiquetaEquipo(id);
     final seleccionado = _equipoSeleccionadoId == id;
+    final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+      nombre: equiposInfo[id]?['nombre']?.toString(),
+      codigo: equiposInfo[id]?['codigo_equipo_control']?.toString(),
+    );
     return Column(
       children: [
         Container(
@@ -616,7 +621,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
             ),
           ),
         ),
-        const Icon(Icons.local_shipping, color: Colors.greenAccent, size: 35),
+        Icon(iconoEquipo, color: Colors.greenAccent, size: 35),
       ],
     );
   }
@@ -634,6 +639,10 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
     final tiempo = estado.tiempo == null
         ? '--:--:--'
         : DateFormat('HH:mm:ss').format(estado.tiempo!);
+    final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+      nombre: equiposInfo[estado.id]?['nombre']?.toString(),
+      codigo: equiposInfo[estado.id]?['codigo_equipo_control']?.toString(),
+    );
 
     return Container(
       width: width,
@@ -653,7 +662,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
             spacing: 4,
             runSpacing: 6,
             children: [
-              const Icon(Icons.local_shipping, color: Colors.greenAccent, size: 18),
+              Icon(iconoEquipo, color: Colors.greenAccent, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

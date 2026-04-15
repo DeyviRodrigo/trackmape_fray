@@ -1,0 +1,22 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "ruta_demo_01",
+        "nombre": "Ruta Principal Demo",
+        "tipo": "acarreo",
+        "tolerancia_metros": 35
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-69.464746, -14.664402],
+          [-69.463800, -14.663900],
+          [-69.462900, -14.663300]
+        ]
+      }
+    }
+  ]
+}

@@ -28,10 +28,58 @@ class _ValidacionEquiposView extends StatelessWidget {
         return LayoutBuilder(
           builder: (context, constraints) {
             final isWide = constraints.maxWidth >= 960;
+            final isMobile = constraints.maxWidth < 700;
             final mapWidget = _MapaValidacion(state: state);
             final listWidget = _ListaDatosCrudos(state: state);
+            final mapHeight = isMobile ? 360.0 : 420.0;
+            final panelHeight = isMobile ? 240.0 : 170.0;
+            final listHeight = isMobile ? 320.0 : 280.0;
 
-            return Padding(
+            if (isWide) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ControlesSuperiores(state: state),
+                    const SizedBox(height: 8),
+                    _ResumenCarga(state: state),
+                    const SizedBox(height: 12),
+                    if (state.status == ValidationStatus.loading || state.cargandoEquipo)
+                      const LinearProgressIndicator(color: Colors.orange),
+                    if (state.status == ValidationStatus.failure)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          state.error ?? 'Error desconocido',
+                          style: const TextStyle(color: Colors.redAccent),
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(flex: 2, child: mapWidget),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 1,
+                            child: Column(
+                              children: [
+                                _PanelTramoSeleccionado(state: state),
+                                const SizedBox(height: 12),
+                                Expanded(child: listWidget),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -51,23 +99,11 @@ class _ValidacionEquiposView extends StatelessWidget {
                       ),
                     ),
                   const SizedBox(height: 12),
-                  Expanded(
-                    child: isWide
-                        ? Row(
-                            children: [
-                              Expanded(flex: 2, child: mapWidget),
-                              const SizedBox(width: 12),
-                              Expanded(flex: 1, child: listWidget),
-                            ],
-                          )
-                        : Column(
-                            children: [
-                              Expanded(flex: 2, child: mapWidget),
-                              const SizedBox(height: 12),
-                              Expanded(flex: 1, child: listWidget),
-                            ],
-                          ),
-                  ),
+                  SizedBox(height: mapHeight, child: mapWidget),
+                  const SizedBox(height: 12),
+                  SizedBox(height: panelHeight, child: _PanelTramoSeleccionado(state: state)),
+                  const SizedBox(height: 12),
+                  SizedBox(height: listHeight, child: listWidget),
                 ],
               ),
             );
@@ -85,6 +121,7 @@ class _ControlesSuperiores extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
     return Wrap(
       spacing: 12,
       runSpacing: 8,
@@ -99,7 +136,10 @@ class _ControlesSuperiores extends StatelessWidget {
           ),
         ),
         Container(
-          constraints: const BoxConstraints(minWidth: 260, maxWidth: 420),
+          constraints: BoxConstraints(
+            minWidth: screenWidth < 700 ? screenWidth - 32 : 260,
+            maxWidth: screenWidth < 700 ? screenWidth - 32 : 420,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: Colors.black26,
@@ -203,9 +243,20 @@ class _ResumenCarga extends StatelessWidget {
           borderColor: Colors.orangeAccent,
         ),
         _chip(
+          'Vel corregida: ${state.velocidadCorregidaPromedioKmh.toStringAsFixed(1)} km/h',
+          color: Colors.blueAccent.withOpacity(0.12),
+          borderColor: Colors.blueAccent,
+        ),
+        _chip(
           'Paradas: ${resumen?.paradasDetectadas ?? 0}',
           color: Colors.redAccent.withOpacity(0.12),
           borderColor: Colors.redAccent,
+        ),
+        _chip('Tramos: ${state.segmentos.length}', color: Colors.white24),
+        _chip(
+          'Tramos descartados: ${state.tramosDescartados}',
+          color: Colors.grey.withOpacity(0.15),
+          borderColor: Colors.grey,
         ),
       ],
     );
@@ -248,7 +299,16 @@ class _MapaValidacion extends StatelessWidget {
       child: Stack(
         children: [
           FlutterMap(
-            options: MapOptions(initialCenter: centro, initialZoom: 15),
+            options: MapOptions(
+              initialCenter: centro,
+              initialZoom: 15,
+              onTap: (_, point) {
+                context.read<ValidationCubit>().seleccionarSegmentoMasCercano(
+                  latitud: point.latitude,
+                  longitud: point.longitude,
+                );
+              },
+            ),
             children: [
               TileLayer(
                 urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
@@ -256,20 +316,27 @@ class _MapaValidacion extends StatelessWidget {
               if (state.segmentos.isNotEmpty)
                 PolylineLayer(
                   polylines: state.segmentos
+                      .where((segmento) => segmento.esVisible)
                       .map(
                         (segmento) => Polyline(
                           points: [
                             ll.LatLng(
-                              segmento.inicio.latitud,
-                              segmento.inicio.longitud,
+                              segmento.latitudInicioDibujo,
+                              segmento.longitudInicioDibujo,
                             ),
                             ll.LatLng(
-                              segmento.fin.latitud,
-                              segmento.fin.longitud,
+                              segmento.latitudFinDibujo,
+                              segmento.longitudFinDibujo,
                             ),
                           ],
                           color: segmento.color,
-                          strokeWidth: 4,
+                          strokeWidth: state.segmentoSeleccionado == segmento
+                              ? 6
+                              : segmento.estado == 'descartado'
+                                  ? 2
+                                  : 4,
+                          strokeCap: StrokeCap.round,
+                          strokeJoin: StrokeJoin.round,
                         ),
                       )
                       .toList(),
@@ -319,6 +386,8 @@ class _MapaValidacion extends StatelessWidget {
                   _LeyendaItem(color: Colors.orangeAccent, texto: 'Atencion'),
                   SizedBox(height: 4),
                   _LeyendaItem(color: Colors.redAccent, texto: 'Critico'),
+                  SizedBox(height: 4),
+                  _LeyendaItem(color: Colors.grey, texto: 'Descartado'),
                 ],
               ),
             ),
@@ -397,6 +466,16 @@ class _ListaDatosCrudos extends StatelessWidget {
         itemBuilder: (context, index) {
           final detalle = state.detalles[index];
           return ListTile(
+            onTap: () {
+              final segmento = state.segmentos.firstWhere(
+                (item) =>
+                    item.fin.tiempo == detalle.punto.tiempo &&
+                    item.fin.latitud == detalle.punto.latitud &&
+                    item.fin.longitud == detalle.punto.longitud,
+                orElse: () => state.segmentos[index.clamp(0, state.segmentos.length - 1)],
+              );
+              context.read<ValidationCubit>().seleccionarSegmento(segmento);
+            },
             dense: true,
             leading: Icon(
               Icons.timeline,
@@ -404,15 +483,15 @@ class _ListaDatosCrudos extends StatelessWidget {
               size: 18,
             ),
             title: Text(
-              '${detalle.punto.latitud.toStringAsFixed(6)}, ${detalle.punto.longitud.toStringAsFixed(6)}',
+              '${detalle.tiempoInicio.toIso8601String()} -> ${detalle.punto.tiempo.toIso8601String()}',
               style: const TextStyle(fontSize: 12),
             ),
             subtitle: Text(
-              '${detalle.punto.tiempo.toIso8601String()}  |  ${detalle.velocidadKmh.toStringAsFixed(1)} km/h  |  ${detalle.estado}',
+              '${detalle.velocidadKmh.toStringAsFixed(1)} km/h  |  ${detalle.distanciaMetros.toStringAsFixed(1)} m  |  ${detalle.estado}  |  ${detalle.motivo}',
               style: const TextStyle(fontSize: 11, color: Colors.white60),
             ),
             trailing: Text(
-              '${(detalle.distanciaMetros / 1000).toStringAsFixed(2)} km',
+              '${detalle.deltaSegundos}s',
               style: TextStyle(
                 fontSize: 11,
                 color: detalle.color,
@@ -421,6 +500,106 @@ class _ListaDatosCrudos extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _PanelTramoSeleccionado extends StatelessWidget {
+  const _PanelTramoSeleccionado({required this.state});
+
+  final ValidationState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final segmento = state.segmentoSeleccionado;
+    if (segmento == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.black26,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10),
+        ),
+        alignment: Alignment.center,
+        child: const Text(
+          'Toca un tramo para ver su detalle.',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    final deltaSegundos =
+        segmento.fin.tiempo.difference(segmento.inicio.tiempo).inSeconds;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: segmento.color, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'Tramo seleccionado',
+            style: TextStyle(
+              color: segmento.color,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Inicio: ${segmento.inicio.tiempo.toIso8601String()}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          Text(
+            'Fin: ${segmento.fin.tiempo.toIso8601String()}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Coord. inicio: ${segmento.inicio.latitud.toStringAsFixed(6)}, ${segmento.inicio.longitud.toStringAsFixed(6)}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          Text(
+            'Coord. fin: ${segmento.fin.latitud.toStringAsFixed(6)}, ${segmento.fin.longitud.toStringAsFixed(6)}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              _datoMini('Segundos', '$deltaSegundos s'),
+              _datoMini('Metros', '${segmento.distanciaMetros.toStringAsFixed(1)} m'),
+              _datoMini('Velocidad', '${segmento.velocidadKmh.toStringAsFixed(1)} km/h'),
+              _datoMini('Estado', segmento.estado),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Motivo: ${segmento.motivo}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _datoMini(String titulo, String valor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$titulo: $valor',
+        style: const TextStyle(color: Colors.white, fontSize: 12),
       ),
     );
   }
