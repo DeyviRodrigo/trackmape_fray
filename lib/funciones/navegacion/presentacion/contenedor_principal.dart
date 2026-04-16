@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/comparativo_rutas_page.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_historico.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_operadores.dart';
+import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_ranking.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_simulacion.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_stream.dart';
 import 'package:trackmape_sup/funciones/validacion/presentacion/paginas/validacion_equipos_page.dart';
@@ -20,6 +21,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
     PaginaStream(),
     PaginaHistorico(),
     PaginaOperadores(),
+    PaginaRanking(),
     HojaSimulacion(),
     ValidacionEquiposPage(),
     ComparativoRutasPage(),
@@ -40,12 +42,15 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
         tituloHeader = 'GESTION DE OPERADORES';
         break;
       case 3:
-        tituloHeader = 'SIMULACION DE TRANSCURSO';
+        tituloHeader = 'RANKING OPERATIVO';
         break;
       case 4:
-        tituloHeader = 'Rendimiento';
+        tituloHeader = 'SIMULACION DE TRANSCURSO';
         break;
       case 5:
+        tituloHeader = 'Rendimiento';
+        break;
+      case 6:
         tituloHeader = 'COMPARATIVO DE RUTAS';
         break;
       default:
@@ -150,20 +155,17 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
           ),
           _itemMenu(Icons.sensors, 'Monitoreo en Tiempo Real', 0),
           _itemMenu(Icons.history, 'Consulta Historica', 1),
-          _itemMenu(
-            Icons.play_circle_fill,
-            'Transcurso Simulado',
-            3,
-            color: Colors.greenAccent,
-          ),
           const Divider(
             color: Colors.white10,
             indent: 20,
             endIndent: 20,
           ),
           _itemMenu(Icons.engineering, 'Base de Operadores', 2),
-          _itemMenu(Icons.fact_check_rounded, 'Rendimiento de Operador', 4),
-          _itemMenu(Icons.compare_arrows_rounded, 'Comparativo de Rutas', 5),
+          _itemMenu(Icons.leaderboard_rounded, 'Ranking Operativo', 3),
+          _itemMenu(Icons.play_circle_fill, 'Transcurso Simulado', 4,
+              color: Colors.greenAccent),
+          _itemMenu(Icons.fact_check_rounded, 'Rendimiento de Operador', 5),
+          _itemMenu(Icons.compare_arrows_rounded, 'Comparativo de Rutas', 6),
           const Spacer(),
           const Divider(color: Colors.white24),
           _itemMenu(Icons.logout, 'Cerrar Sesion', -1, color: Colors.redAccent),

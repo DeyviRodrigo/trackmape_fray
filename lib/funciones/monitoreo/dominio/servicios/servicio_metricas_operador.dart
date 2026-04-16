@@ -5,7 +5,14 @@ import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.da
 
 class ConfiguracionMetricasOperador {
   final List<PuntoControlDescarga> puntosDescarga;
-  final double radioChuteMetros;
+  final List<PuntoControlCarga> puntosCarga;
+  final int frecuenciaBaseSegundos;
+  final int gapMaximoRecuperableSegundos;
+  final double radioEntradaCargaMetros;
+  final double radioSalidaCargaMetros;
+  final double radioEntradaChuteMetros;
+  final double radioSalidaChuteMetros;
+  final Duration separacionMinimaEventoOperacion;
   final double velocidadDetenidoMaximaKmh;
   final Duration tiempoDetenidoPermitidoMinimo;
   final double tarifaHoraCargadorFrontal;
@@ -15,7 +22,14 @@ class ConfiguracionMetricasOperador {
 
   const ConfiguracionMetricasOperador({
     required this.puntosDescarga,
-    required this.radioChuteMetros,
+    required this.puntosCarga,
+    required this.frecuenciaBaseSegundos,
+    required this.gapMaximoRecuperableSegundos,
+    required this.radioEntradaCargaMetros,
+    required this.radioSalidaCargaMetros,
+    required this.radioEntradaChuteMetros,
+    required this.radioSalidaChuteMetros,
+    required this.separacionMinimaEventoOperacion,
     required this.velocidadDetenidoMaximaKmh,
     required this.tiempoDetenidoPermitidoMinimo,
     required this.tarifaHoraCargadorFrontal,
@@ -23,6 +37,9 @@ class ConfiguracionMetricasOperador {
     required this.velocidadMaximaCargadorKmh,
     required this.velocidadMaximaVolqueteKmh,
   });
+
+  double get radioChuteMetros => radioEntradaChuteMetros;
+  double get radioCargaMetros => radioEntradaCargaMetros;
 
   static const porDefecto = ConfiguracionMetricasOperador(
     puntosDescarga: [
@@ -32,7 +49,17 @@ class ConfiguracionMetricasOperador {
       PuntoControlDescarga(latitud: -14.668801, longitud: -69.466919),
       PuntoControlDescarga(latitud: -14.669245, longitud: -69.466820),
     ],
-    radioChuteMetros: 12.0,
+    puntosCarga: [
+      PuntoControlCarga(latitud: -14.673484, longitud: -69.468195),
+      PuntoControlCarga(latitud: -14.673975, longitud: -69.467738),
+    ],
+    frecuenciaBaseSegundos: 5,
+    gapMaximoRecuperableSegundos: 20,
+    radioEntradaCargaMetros: 18.0,
+    radioSalidaCargaMetros: 24.0,
+    radioEntradaChuteMetros: 20.0,
+    radioSalidaChuteMetros: 25.0,
+    separacionMinimaEventoOperacion: Duration(minutes: 1),
     velocidadDetenidoMaximaKmh: 1.0,
     tiempoDetenidoPermitidoMinimo: Duration(minutes: 5),
     tarifaHoraCargadorFrontal: 200.0,
@@ -52,14 +79,35 @@ class PuntoControlDescarga {
   });
 }
 
+class PuntoControlCarga {
+  final double latitud;
+  final double longitud;
+
+  const PuntoControlCarga({
+    required this.latitud,
+    required this.longitud,
+  });
+}
+
 class MetricasOperadorDiarias {
   final int ciclos;
+  final int llegadasDetectadas;
+  final int entradasCarga;
+  final int llegadasDescarga;
+  final int cantidadChutes;
+  final int cantidadPuntosCarga;
+  final double radioEntradaCargaMetros;
+  final double radioSalidaCargaMetros;
+  final double radioEntradaChuteMetros;
+  final double radioSalidaChuteMetros;
+  final double radioChuteMetros;
   final double? promedioCicloMin;
   final double? modaCicloMin;
   final double? mediaCicloMin;
   final double? maxCicloMin;
   final double? minCicloMin;
   final double recorridoKm;
+  final double? tiempoPerdidoAlteracionMin;
   final double? sobretiempoTotalMin;
   final double sobretiempoPermitidoMin;
   final double? pagoIneficiencia;
@@ -69,12 +117,23 @@ class MetricasOperadorDiarias {
 
   const MetricasOperadorDiarias({
     required this.ciclos,
+    required this.llegadasDetectadas,
+    required this.entradasCarga,
+    required this.llegadasDescarga,
+    required this.cantidadChutes,
+    required this.cantidadPuntosCarga,
+    required this.radioEntradaCargaMetros,
+    required this.radioSalidaCargaMetros,
+    required this.radioEntradaChuteMetros,
+    required this.radioSalidaChuteMetros,
+    required this.radioChuteMetros,
     required this.promedioCicloMin,
     required this.modaCicloMin,
     required this.mediaCicloMin,
     required this.maxCicloMin,
     required this.minCicloMin,
     required this.recorridoKm,
+    required this.tiempoPerdidoAlteracionMin,
     required this.sobretiempoTotalMin,
     required this.sobretiempoPermitidoMin,
     required this.pagoIneficiencia,
@@ -85,12 +144,23 @@ class MetricasOperadorDiarias {
 
   static const vacia = MetricasOperadorDiarias(
     ciclos: 0,
+    llegadasDetectadas: 0,
+    entradasCarga: 0,
+    llegadasDescarga: 0,
+    cantidadChutes: 0,
+    cantidadPuntosCarga: 0,
+    radioEntradaCargaMetros: 0,
+    radioSalidaCargaMetros: 0,
+    radioEntradaChuteMetros: 0,
+    radioSalidaChuteMetros: 0,
+    radioChuteMetros: 0,
     promedioCicloMin: null,
     modaCicloMin: null,
     mediaCicloMin: null,
     maxCicloMin: null,
     minCicloMin: null,
     recorridoKm: 0,
+    tiempoPerdidoAlteracionMin: null,
     sobretiempoTotalMin: null,
     sobretiempoPermitidoMin: 0,
     pagoIneficiencia: null,
@@ -127,9 +197,86 @@ class ResumenMovimientoOperador {
   );
 }
 
+class ResultadoProcesadoOperador {
+  final List<PuntoTrayectoria<Map<String, dynamic>>> puntosNormalizados;
+  final List<PuntoTrayectoria<Map<String, dynamic>>> puntosReales;
+  final List<PuntoTrayectoria<Map<String, dynamic>>> puntosReconstruidos;
+  final List<PuntoTrayectoria<Map<String, dynamic>>> puntosCombinados;
+  final List<PuntoTrayectoria<Map<String, dynamic>>> puntosLimpios;
+  final List<List<PuntoTrayectoria<Map<String, dynamic>>>> segmentosOperativos;
+  final List<List<PuntoTrayectoria<Map<String, dynamic>>>> segmentosReconstruidos;
+  final int conteoPuntosSinteticos;
+  final int conteoSaltosDescartados;
+  final ResumenMovimientoOperador resumenMovimiento;
+  final MetricasOperadorDiarias metricas;
+  final AuditoriaOperacion auditoriaOperacion;
+
+  const ResultadoProcesadoOperador({
+    required this.puntosNormalizados,
+    required this.puntosReales,
+    required this.puntosReconstruidos,
+    required this.puntosCombinados,
+    required this.puntosLimpios,
+    required this.segmentosOperativos,
+    required this.segmentosReconstruidos,
+    required this.conteoPuntosSinteticos,
+    required this.conteoSaltosDescartados,
+    required this.resumenMovimiento,
+    required this.metricas,
+    required this.auditoriaOperacion,
+  });
+
+  List<PuntoTrayectoria<Map<String, dynamic>>> get puntosCrudosValidos =>
+      puntosNormalizados;
+  List<List<PuntoTrayectoria<Map<String, dynamic>>>> get segmentosAnaliticos =>
+      segmentosOperativos;
+  MetricasOperadorDiarias get metricasOperativas => metricas;
+
+  static const vacio = ResultadoProcesadoOperador(
+    puntosNormalizados: [],
+    puntosReales: [],
+    puntosReconstruidos: [],
+    puntosCombinados: [],
+    puntosLimpios: [],
+    segmentosOperativos: [],
+    segmentosReconstruidos: [],
+    conteoPuntosSinteticos: 0,
+    conteoSaltosDescartados: 0,
+    resumenMovimiento: ResumenMovimientoOperador.vacio,
+    metricas: MetricasOperadorDiarias.vacia,
+    auditoriaOperacion: AuditoriaOperacion.vacia,
+  );
+}
+
+class AuditoriaOperacion {
+  final int cargasSinCierre;
+  final int descargasSinCargaPrevia;
+  final int ciclosRecuperadosPorInterpolacion;
+  final int gapsLargos;
+  final int outliersDuracion;
+
+  const AuditoriaOperacion({
+    required this.cargasSinCierre,
+    required this.descargasSinCargaPrevia,
+    required this.ciclosRecuperadosPorInterpolacion,
+    required this.gapsLargos,
+    required this.outliersDuracion,
+  });
+
+  static const vacia = AuditoriaOperacion(
+    cargasSinCierre: 0,
+    descargasSinCargaPrevia: 0,
+    ciclosRecuperadosPorInterpolacion: 0,
+    gapsLargos: 0,
+    outliersDuracion: 0,
+  );
+}
+
 class ServicioMetricasOperador {
   final LimpiadorTrayectoria _limpiador;
   final ConfiguracionMetricasOperador _config;
+  static const Duration _ttlResultadoProcesado = Duration(minutes: 5);
+  static final Map<String, _CacheResultadoProcesado> _cacheResultados = {};
 
   const ServicioMetricasOperador({
     LimpiadorTrayectoria limpiador = const LimpiadorTrayectoria(),
@@ -138,146 +285,87 @@ class ServicioMetricasOperador {
   })  : _limpiador = limpiador,
         _config = config;
 
+  ResultadoProcesadoOperador procesarDatosUnidad({
+    required ModeloEquipo equipo,
+    required List<Map<String, dynamic>> puntosCrudos,
+  }) {
+    final puntosNormalizados = _normalizarPuntos(puntosCrudos);
+    if (puntosNormalizados.isEmpty) {
+      return ResultadoProcesadoOperador.vacio;
+    }
+
+    final cacheKey = _construirClaveCache(equipo, puntosNormalizados);
+    final cache = _cacheResultados[cacheKey];
+    if (cache != null && !cache.expirado(_ttlResultadoProcesado)) {
+      return cache.resultado;
+    }
+
+    final reconstruccion = _reconstruirTrayectoria(
+      puntosNormalizados: puntosNormalizados,
+    );
+    final puntosCombinados = reconstruccion.puntosCombinados;
+    final segmentosReconstruidos = _segmentarPuntosReconstruidos(
+      equipo,
+      puntosCombinados,
+    );
+    final puntosVisibles = _compactarSegmentos(segmentosReconstruidos);
+    final segmentosOperativos = _segmentarPuntosOperativos(
+      equipo,
+      puntosCombinados,
+    );
+    final resumenMovimiento = _calcularResumenDesdeSegmentos(
+      segmentosOperativos,
+      registrosValidos: puntosNormalizados.length,
+    );
+    final resultadoMetricas = _calcularMetricasDesdePuntos(
+      equipo: equipo,
+      puntosOperacion: puntosCombinados,
+      resumenMovimiento: resumenMovimiento,
+      gapsLargos: reconstruccion.saltosDescartados,
+    );
+
+    final resultado = ResultadoProcesadoOperador(
+      puntosNormalizados: puntosNormalizados,
+      puntosReales: puntosNormalizados,
+      puntosReconstruidos: reconstruccion.puntosReconstruidos,
+      puntosCombinados: puntosCombinados,
+      puntosLimpios: puntosVisibles,
+      segmentosOperativos: segmentosOperativos,
+      segmentosReconstruidos: segmentosReconstruidos,
+      conteoPuntosSinteticos: puntosVisibles
+          .where((punto) => punto.payload['__interpolado'] == true)
+          .length,
+      conteoSaltosDescartados: reconstruccion.saltosDescartados +
+          _contarSaltosDescartados(
+            puntosCombinados.length,
+            puntosVisibles.length,
+          ),
+      resumenMovimiento: resumenMovimiento,
+      metricas: resultadoMetricas.metricas,
+      auditoriaOperacion: resultadoMetricas.auditoria,
+    );
+    _cacheResultados[cacheKey] = _CacheResultadoProcesado(resultado);
+    return resultado;
+  }
+
   MetricasOperadorDiarias calcularMetricasDiarias({
     required ModeloEquipo equipo,
     required List<Map<String, dynamic>> puntosCrudos,
   }) {
-    final puntos = _normalizarPuntos(puntosCrudos);
-    if (puntos.isEmpty) {
-      return MetricasOperadorDiarias.vacia;
-    }
-
-    final resumenMovimiento = calcularResumenMovimiento(
+    return procesarDatosUnidad(
       equipo: equipo,
       puntosCrudos: puntosCrudos,
-    );
-    final llegadas = _detectarLlegadas(puntos);
-    final ciclos = _construirCiclos(puntos, llegadas);
-    final tieneMuestraSuficiente = ciclos.length >= 3;
-
-    final duraciones = ciclos.map((ciclo) => ciclo.tiempoCicloMin).toList();
-    final promedio = tieneMuestraSuficiente ? _promedio(duraciones) : null;
-    final moda = tieneMuestraSuficiente ? _modaRedondeadaMin(duraciones) : null;
-    final maximo = tieneMuestraSuficiente ? _maximo(duraciones) : null;
-    final minimo = tieneMuestraSuficiente ? _minimo(duraciones) : null;
-
-    final sobretiempoPermitidoMin = ciclos.fold<double>(
-      0,
-      (total, ciclo) => total + ciclo.tiempoDetenidoPermitidoMin,
-    );
-
-    double? sobretiempoTotalMin;
-    double? pagoIneficiencia;
-    double? costoIneficiencia;
-
-    if (tieneMuestraSuficiente && promedio != null) {
-      sobretiempoTotalMin = ciclos.fold<double>(
-        0,
-        (total, ciclo) {
-          final exceso = math.max(
-            0.0,
-            ciclo.tiempoCicloMin - promedio - ciclo.tiempoDetenidoPermitidoMin,
-          );
-          return total + exceso;
-        },
-      );
-
-      final tarifaHora = _resolverTarifaHora(equipo);
-      pagoIneficiencia = (sobretiempoTotalMin / 60) * tarifaHora;
-      costoIneficiencia = pagoIneficiencia;
-    }
-
-    return MetricasOperadorDiarias(
-      ciclos: ciclos.length,
-      promedioCicloMin: promedio,
-      modaCicloMin: moda,
-      mediaCicloMin: promedio,
-      maxCicloMin: maximo,
-      minCicloMin: minimo,
-      recorridoKm: resumenMovimiento.recorridoKm,
-      sobretiempoTotalMin: sobretiempoTotalMin,
-      sobretiempoPermitidoMin: sobretiempoPermitidoMin,
-      pagoIneficiencia: pagoIneficiencia,
-      costoIneficiencia: costoIneficiencia,
-      almuerzoDesayunoInfo: '${sobretiempoPermitidoMin.toStringAsFixed(1)} min',
-      tieneMuestraSuficiente: tieneMuestraSuficiente,
-    );
+    ).metricas;
   }
 
   ResumenMovimientoOperador calcularResumenMovimiento({
     required ModeloEquipo equipo,
     required List<Map<String, dynamic>> puntosCrudos,
   }) {
-    final puntosNormalizados = _normalizarPuntos(puntosCrudos);
-    final registrosValidos = puntosNormalizados.length;
-    if (puntosNormalizados.length < 2) {
-      return ResumenMovimientoOperador(
-        velocidadActualKmh: 0,
-        velocidadMaximaKmh: 0,
-        velocidadPromedioKmh: 0,
-        recorridoKm: 0,
-        tramosValidos: 0,
-        registrosValidos: registrosValidos,
-      );
-    }
-
-    final limpieza = _limpiador.limpiar(puntosNormalizados);
-    final puntos = limpieza.puntos;
-    if (puntos.length < 2) {
-      return ResumenMovimientoOperador(
-        velocidadActualKmh: 0,
-        velocidadMaximaKmh: 0,
-        velocidadPromedioKmh: 0,
-        recorridoKm: 0,
-        tramosValidos: 0,
-        registrosValidos: registrosValidos,
-      );
-    }
-
-    final velocidadMaximaPermitida = _resolverVelocidadMaximaKmh(equipo);
-    var velocidadActual = 0.0;
-    var velocidadMaxima = 0.0;
-    var recorridoKm = 0.0;
-    var sumaVelocidades = 0.0;
-    var tramosValidos = 0;
-
-    for (var i = 1; i < puntos.length; i++) {
-      final anterior = puntos[i - 1];
-      final actual = puntos[i];
-      final deltaSegundos = actual.tiempo.difference(anterior.tiempo).inSeconds;
-      if (deltaSegundos <= 0) continue;
-
-      final velocidad = _limpiador.velocidadKmh(anterior, actual);
-      final distancia = _limpiador.distanciaMetros(
-        anterior.latitud,
-        anterior.longitud,
-        actual.latitud,
-        actual.longitud,
-      );
-
-      if (velocidad.isNaN || velocidad.isInfinite) continue;
-      if (distancia < 2) continue;
-      if (velocidad > velocidadMaximaPermitida) continue;
-
-      velocidadActual = velocidad;
-      if (velocidad > velocidadMaxima) {
-        velocidadMaxima = velocidad;
-      }
-
-      recorridoKm += distancia / 1000;
-      sumaVelocidades += velocidad;
-      tramosValidos++;
-    }
-
-    return ResumenMovimientoOperador(
-      velocidadActualKmh: velocidadActual,
-      velocidadMaximaKmh: velocidadMaxima,
-      velocidadPromedioKmh:
-          tramosValidos == 0 ? 0.0 : (sumaVelocidades / tramosValidos),
-      recorridoKm: recorridoKm,
-      tramosValidos: tramosValidos,
-      registrosValidos: registrosValidos,
-    );
+    return procesarDatosUnidad(
+      equipo: equipo,
+      puntosCrudos: puntosCrudos,
+    ).resumenMovimiento;
   }
 
   List<PuntoTrayectoria<Map<String, dynamic>>> _normalizarPuntos(
@@ -311,79 +399,378 @@ class ServicioMetricasOperador {
     return puntos;
   }
 
-  List<_EventoLlegada> _detectarLlegadas(
-    List<PuntoTrayectoria<Map<String, dynamic>>> puntos,
-  ) {
-    final llegadas = <_EventoLlegada>[];
-    var dentroDeChute = false;
-
-    for (final punto in puntos) {
-      final indiceChute = _indiceChuteEnRango(punto);
-      final estaDentro = indiceChute != null;
-
-      if (estaDentro && !dentroDeChute) {
-        llegadas.add(
-          _EventoLlegada(
-            tiempo: punto.tiempo,
-            indiceChute: indiceChute,
-          ),
-        );
-      }
-
-      dentroDeChute = estaDentro;
+  _ResultadoReconstruccion _reconstruirTrayectoria({
+    required List<PuntoTrayectoria<Map<String, dynamic>>> puntosNormalizados,
+  }) {
+    if (puntosNormalizados.isEmpty) {
+      return const _ResultadoReconstruccion(
+        puntosCombinados: [],
+        puntosReconstruidos: [],
+        saltosDescartados: 0,
+      );
     }
 
-    return llegadas;
+    final puntosCombinados = <PuntoTrayectoria<Map<String, dynamic>>>[
+      puntosNormalizados.first,
+    ];
+    final puntosReconstruidos = <PuntoTrayectoria<Map<String, dynamic>>>[];
+    var saltosDescartados = 0;
+
+    for (var i = 1; i < puntosNormalizados.length; i++) {
+      final anterior = puntosNormalizados[i - 1];
+      final actual = puntosNormalizados[i];
+      final deltaSegundos = actual.tiempo.difference(anterior.tiempo).inSeconds;
+
+      if (deltaSegundos <= 0) {
+        saltosDescartados++;
+        continue;
+      }
+
+      if (deltaSegundos > _config.gapMaximoRecuperableSegundos) {
+        saltosDescartados++;
+        puntosCombinados.add(actual);
+        continue;
+      }
+
+      if (deltaSegundos > _config.frecuenciaBaseSegundos) {
+        final cantidadIntermedios =
+            (deltaSegundos ~/ _config.frecuenciaBaseSegundos) - 1;
+
+        for (var paso = 1; paso <= cantidadIntermedios; paso++) {
+          final fraccion =
+              (paso * _config.frecuenciaBaseSegundos) / deltaSegundos;
+          final tiempoInterpolado = anterior.tiempo.add(
+            Duration(seconds: paso * _config.frecuenciaBaseSegundos),
+          );
+          final latInterpolada =
+              anterior.latitud + ((actual.latitud - anterior.latitud) * fraccion);
+          final lonInterpolada = anterior.longitud +
+              ((actual.longitud - anterior.longitud) * fraccion);
+
+          final payload = <String, dynamic>{
+            ...actual.payload,
+            'lat_grados': latInterpolada,
+            'lon_grados': lonInterpolada,
+            'tiempo': tiempoInterpolado.toIso8601String(),
+            '__interpolado': true,
+          };
+
+          final sintetico = PuntoTrayectoria<Map<String, dynamic>>(
+            latitud: latInterpolada,
+            longitud: lonInterpolada,
+            tiempo: tiempoInterpolado,
+            payload: payload,
+          );
+          puntosReconstruidos.add(sintetico);
+          puntosCombinados.add(sintetico);
+        }
+      }
+
+      puntosCombinados.add(actual);
+    }
+
+    return _ResultadoReconstruccion(
+      puntosCombinados: puntosCombinados,
+      puntosReconstruidos: puntosReconstruidos,
+      saltosDescartados: saltosDescartados,
+    );
   }
 
-  int? _indiceChuteEnRango(PuntoTrayectoria<Map<String, dynamic>> punto) {
-    for (var i = 0; i < _config.puntosDescarga.length; i++) {
-      final chute = _config.puntosDescarga[i];
+  List<List<PuntoTrayectoria<Map<String, dynamic>>>> _segmentarPuntosReconstruidos(
+    ModeloEquipo equipo,
+    List<PuntoTrayectoria<Map<String, dynamic>>> puntos,
+  ) {
+    if (puntos.length < 2) return const [];
+
+    final segmentos = <List<PuntoTrayectoria<Map<String, dynamic>>>>[];
+    List<PuntoTrayectoria<Map<String, dynamic>>> actual = [puntos.first];
+    final velocidadMaximaVisual = _resolverVelocidadVisualMaximaKmh(equipo);
+
+    for (var i = 1; i < puntos.length; i++) {
+      final anterior = puntos[i - 1];
+      final siguiente = puntos[i];
+      final deltaSegundos = siguiente.tiempo.difference(anterior.tiempo).inSeconds;
       final distancia = _limpiador.distanciaMetros(
-        punto.latitud,
-        punto.longitud,
-        chute.latitud,
-        chute.longitud,
+        anterior.latitud,
+        anterior.longitud,
+        siguiente.latitud,
+        siguiente.longitud,
       );
-      if (distancia <= _config.radioChuteMetros) {
-        return i;
+      final velocidad = _limpiador.velocidadKmh(anterior, siguiente);
+
+      final esGapInvalido =
+          deltaSegundos <= 0 ||
+          deltaSegundos > _config.gapMaximoRecuperableSegundos;
+      final esSaltoVisualAbsurdo =
+          distancia > 1 &&
+          (velocidad.isNaN ||
+              velocidad.isInfinite ||
+              velocidad > velocidadMaximaVisual);
+
+      if (esGapInvalido || esSaltoVisualAbsurdo) {
+        if (actual.length >= 2) {
+          segmentos.add(actual);
+        }
+        actual = [siguiente];
+        continue;
       }
+
+      actual.add(siguiente);
     }
-    return null;
+
+    if (actual.length >= 2) {
+      segmentos.add(actual);
+    }
+
+    return segmentos;
   }
 
-  List<_CicloOperativo> _construirCiclos(
-    List<PuntoTrayectoria<Map<String, dynamic>>> puntos,
-    List<_EventoLlegada> llegadas,
+  List<PuntoTrayectoria<Map<String, dynamic>>> _compactarSegmentos(
+    List<List<PuntoTrayectoria<Map<String, dynamic>>>> segmentos,
   ) {
-    final ciclos = <_CicloOperativo>[];
+    final puntos = <PuntoTrayectoria<Map<String, dynamic>>>[];
 
-    for (var i = 1; i < llegadas.length; i++) {
-      final llegadaAnterior = llegadas[i - 1];
-      final llegadaActual = llegadas[i];
-      final deltaSegundos =
-          llegadaActual.tiempo.difference(llegadaAnterior.tiempo).inSeconds;
+    for (final segmento in segmentos) {
+      for (final punto in segmento) {
+        if (puntos.isEmpty || !_esMismoPunto(puntos.last, punto)) {
+          puntos.add(punto);
+        }
+      }
+    }
 
-      if (deltaSegundos <= 0) continue;
+    return puntos;
+  }
 
-      final tiempoCicloMin = deltaSegundos / 60.0;
-      final tiempoDetenidoPermitidoMin = _calcularTiempoDetenidoPermitidoMin(
-        puntos: puntos,
-        inicio: llegadaAnterior.tiempo,
-        fin: llegadaActual.tiempo,
+  int _contarSaltosDescartados(int totalPuntos, int puntosVisibles) {
+    final descartados = totalPuntos - puntosVisibles;
+    return descartados < 0 ? 0 : descartados;
+  }
+
+  List<List<PuntoTrayectoria<Map<String, dynamic>>>> _segmentarPuntosOperativos(
+    ModeloEquipo equipo,
+    List<PuntoTrayectoria<Map<String, dynamic>>> puntos,
+  ) {
+    if (puntos.length < 2) return const [];
+
+    final velocidadMaximaPermitida = _resolverVelocidadMaximaKmh(equipo);
+    final segmentos = <List<PuntoTrayectoria<Map<String, dynamic>>>>[];
+    List<PuntoTrayectoria<Map<String, dynamic>>> actual = [];
+
+    for (var i = 1; i < puntos.length; i++) {
+      final anterior = puntos[i - 1];
+      final siguiente = puntos[i];
+      final deltaSegundos = siguiente.tiempo.difference(anterior.tiempo).inSeconds;
+      if (deltaSegundos <= 0 ||
+          deltaSegundos > _config.gapMaximoRecuperableSegundos) {
+        if (actual.length >= 2) segmentos.add(actual);
+        actual = [siguiente];
+        continue;
+      }
+
+      final velocidad = _limpiador.velocidadKmh(anterior, siguiente);
+      final distancia = _limpiador.distanciaMetros(
+        anterior.latitud,
+        anterior.longitud,
+        siguiente.latitud,
+        siguiente.longitud,
       );
 
-      ciclos.add(
-        _CicloOperativo(
-          tiempoCicloMin: tiempoCicloMin,
-          tiempoDetenidoPermitidoMin: tiempoDetenidoPermitidoMin,
-          chuteInicio: llegadaAnterior.indiceChute,
-          chuteFin: llegadaActual.indiceChute,
-        ),
+      final esTramoValido = !velocidad.isNaN &&
+          !velocidad.isInfinite &&
+          distancia >= 2 &&
+          velocidad <= velocidadMaximaPermitida;
+
+      if (!esTramoValido) {
+        if (actual.length >= 2) segmentos.add(actual);
+        actual = [];
+        continue;
+      }
+
+      if (actual.isEmpty) {
+        actual = [anterior, siguiente];
+      } else if (!_esMismoPunto(actual.last, siguiente)) {
+        actual.add(siguiente);
+      }
+    }
+
+    if (actual.length >= 2) {
+      segmentos.add(actual);
+    }
+
+    return segmentos;
+  }
+
+  ResumenMovimientoOperador _calcularResumenDesdeSegmentos(
+    List<List<PuntoTrayectoria<Map<String, dynamic>>>> segmentos, {
+    required int registrosValidos,
+  }) {
+    if (segmentos.isEmpty) {
+      return ResumenMovimientoOperador(
+        velocidadActualKmh: 0,
+        velocidadMaximaKmh: 0,
+        velocidadPromedioKmh: 0,
+        recorridoKm: 0,
+        tramosValidos: 0,
+        registrosValidos: registrosValidos,
       );
     }
 
-    return ciclos;
+    var velocidadActual = 0.0;
+    var velocidadMaxima = 0.0;
+    var recorridoKm = 0.0;
+    var sumaVelocidades = 0.0;
+    var tramosValidos = 0;
+
+    for (final segmento in segmentos) {
+      for (var i = 1; i < segmento.length; i++) {
+        final anterior = segmento[i - 1];
+        final actual = segmento[i];
+        final velocidad = _limpiador.velocidadKmh(anterior, actual);
+        final distancia = _limpiador.distanciaMetros(
+          anterior.latitud,
+          anterior.longitud,
+          actual.latitud,
+          actual.longitud,
+        );
+
+        velocidadActual = velocidad;
+        if (velocidad > velocidadMaxima) {
+          velocidadMaxima = velocidad;
+        }
+
+        recorridoKm += distancia / 1000;
+        sumaVelocidades += velocidad;
+        tramosValidos++;
+      }
+    }
+
+    return ResumenMovimientoOperador(
+      velocidadActualKmh: velocidadActual,
+      velocidadMaximaKmh: velocidadMaxima,
+      velocidadPromedioKmh:
+          tramosValidos == 0 ? 0.0 : (sumaVelocidades / tramosValidos),
+      recorridoKm: recorridoKm,
+      tramosValidos: tramosValidos,
+      registrosValidos: registrosValidos,
+    );
+  }
+
+  _ResultadoMetricas _calcularMetricasDesdePuntos({
+    required ModeloEquipo equipo,
+    required List<PuntoTrayectoria<Map<String, dynamic>>> puntosOperacion,
+    required ResumenMovimientoOperador resumenMovimiento,
+    required int gapsLargos,
+  }) {
+    if (puntosOperacion.isEmpty) {
+      return const _ResultadoMetricas(
+        metricas: MetricasOperadorDiarias.vacia,
+        auditoria: AuditoriaOperacion.vacia,
+      );
+    }
+
+    final operacion = _detectarOperacionCargaDescarga(
+      equipo: equipo,
+      puntos: puntosOperacion,
+    );
+    final ciclos = operacion.ciclos;
+    final tieneMuestraSuficiente = ciclos.isNotEmpty;
+
+    final duraciones = ciclos.map((ciclo) => ciclo.tiempoCicloMin).toList();
+    final promedio = tieneMuestraSuficiente ? _promedio(duraciones) : null;
+    final moda = tieneMuestraSuficiente ? _modaRedondeadaMin(duraciones) : null;
+    final maximo = tieneMuestraSuficiente ? _maximo(duraciones) : null;
+    final minimo = tieneMuestraSuficiente ? _minimo(duraciones) : null;
+
+    final sobretiempoPermitidoMin = ciclos.fold<double>(
+      0,
+      (total, ciclo) => total + ciclo.tiempoDetenidoPermitidoMin,
+    );
+
+    double? sobretiempoTotalMin;
+    double? tiempoPerdidoAlteracionMin;
+    double? pagoIneficiencia;
+    double? costoIneficiencia;
+
+    if (tieneMuestraSuficiente && promedio != null) {
+      final sobretiempoBrutoMin = ciclos.fold<double>(
+        0,
+        (total, ciclo) {
+          final exceso = math.max(
+            0.0,
+            ciclo.tiempoCicloMin - promedio,
+          );
+          return total + exceso;
+        },
+      );
+      tiempoPerdidoAlteracionMin = ciclos.fold<double>(
+        0,
+        (total, ciclo) {
+          final exceso = math.max(
+            0.0,
+            ciclo.tiempoCicloMin - promedio - ciclo.tiempoDetenidoPermitidoMin,
+          );
+          return total + exceso;
+        },
+      );
+      sobretiempoTotalMin = math.max(
+        0.0,
+        sobretiempoBrutoMin - sobretiempoPermitidoMin,
+      );
+
+      final tarifaHora = _resolverTarifaHora(equipo);
+      pagoIneficiencia = (sobretiempoTotalMin / 60) * tarifaHora;
+      costoIneficiencia = pagoIneficiencia;
+    }
+
+    final metricas = MetricasOperadorDiarias(
+      ciclos: ciclos.length,
+      llegadasDetectadas: operacion.llegadasDescarga,
+      entradasCarga: operacion.entradasCarga,
+      llegadasDescarga: operacion.llegadasDescarga,
+      cantidadChutes: _config.puntosDescarga.length,
+      cantidadPuntosCarga: _config.puntosCarga.length,
+      radioEntradaCargaMetros: _config.radioEntradaCargaMetros,
+      radioSalidaCargaMetros: _config.radioSalidaCargaMetros,
+      radioEntradaChuteMetros: _config.radioEntradaChuteMetros,
+      radioSalidaChuteMetros: _config.radioSalidaChuteMetros,
+      radioChuteMetros: _config.radioChuteMetros,
+      promedioCicloMin: promedio,
+      modaCicloMin: moda,
+      mediaCicloMin: promedio,
+      maxCicloMin: maximo,
+      minCicloMin: minimo,
+      recorridoKm: resumenMovimiento.recorridoKm,
+      tiempoPerdidoAlteracionMin: tiempoPerdidoAlteracionMin,
+      sobretiempoTotalMin: sobretiempoTotalMin,
+      sobretiempoPermitidoMin: sobretiempoPermitidoMin,
+      pagoIneficiencia: pagoIneficiencia,
+      costoIneficiencia: costoIneficiencia,
+      almuerzoDesayunoInfo: '${sobretiempoPermitidoMin.toStringAsFixed(1)} min',
+      tieneMuestraSuficiente: tieneMuestraSuficiente,
+    );
+    final auditoria = AuditoriaOperacion(
+      cargasSinCierre: operacion.cargasSinCierre,
+      descargasSinCargaPrevia: operacion.descargasSinCargaPrevia,
+      ciclosRecuperadosPorInterpolacion: operacion.ciclosRecuperadosPorInterpolacion,
+      gapsLargos: gapsLargos,
+      outliersDuracion: ciclos
+          .where((ciclo) => ciclo.tiempoCicloMin >= 40)
+          .length,
+    );
+
+    return _ResultadoMetricas(
+      metricas: metricas,
+      auditoria: auditoria,
+    );
+  }
+
+  bool _esMismoPunto(
+    PuntoTrayectoria<Map<String, dynamic>> a,
+    PuntoTrayectoria<Map<String, dynamic>> b,
+  ) {
+    return a.tiempo == b.tiempo &&
+        a.latitud == b.latitud &&
+        a.longitud == b.longitud;
   }
 
   double _calcularTiempoDetenidoPermitidoMin({
@@ -492,6 +879,20 @@ class ServicioMetricasOperador {
     return _config.velocidadMaximaVolqueteKmh;
   }
 
+  double _resolverVelocidadVisualMaximaKmh(ModeloEquipo equipo) {
+    final descriptor = _resolverDescriptorEquipo(equipo);
+
+    if (descriptor.contains('CARGADOR')) {
+      return 55.0;
+    }
+
+    if (descriptor.contains('VOLQUETE')) {
+      return 90.0;
+    }
+
+    return 90.0;
+  }
+
   String _resolverDescriptorEquipo(ModeloEquipo equipo) {
     final descriptor = [
       equipo.tipoEquipo,
@@ -500,15 +901,243 @@ class ServicioMetricasOperador {
     ].whereType<String>().join(' ').toUpperCase();
     return descriptor;
   }
+
+  bool _esVolquete(ModeloEquipo equipo) {
+    return _resolverDescriptorEquipo(equipo).contains('VOLQUETE');
+  }
+
+  _ResultadoOperacion _detectarOperacionCargaDescarga({
+    required ModeloEquipo equipo,
+    required List<PuntoTrayectoria<Map<String, dynamic>>> puntos,
+  }) {
+    if (!_esVolquete(equipo) || puntos.isEmpty) {
+      return const _ResultadoOperacion(
+        entradasCarga: 0,
+        llegadasDescarga: 0,
+        cargasSinCierre: 0,
+        descargasSinCargaPrevia: 0,
+        ciclosRecuperadosPorInterpolacion: 0,
+        ciclos: [],
+      );
+    }
+
+    var entradasCarga = 0;
+    var llegadasDescarga = 0;
+    var cargasSinCierre = 0;
+    var descargasSinCargaPrevia = 0;
+    var ciclosRecuperadosPorInterpolacion = 0;
+    final ciclos = <_CicloOperativo>[];
+    final cargasArmadas = <DateTime>[];
+
+    var dentroCarga = false;
+    int? chuteActual;
+    DateTime? ultimoTiempo;
+    DateTime? ultimaCargaRegistrada;
+    DateTime? ultimaDescargaRegistrada;
+
+    for (final punto in puntos) {
+      if (ultimoTiempo != null) {
+        final deltaSegundos = punto.tiempo.difference(ultimoTiempo).inSeconds;
+        if (deltaSegundos > _config.gapMaximoRecuperableSegundos) {
+          dentroCarga = false;
+          chuteActual = null;
+        }
+      }
+
+      final indiceCarga = _indiceCargaEnRango(
+        punto,
+        radioMetros: dentroCarga
+            ? _config.radioSalidaCargaMetros
+            : _config.radioEntradaCargaMetros,
+      );
+
+      if (!dentroCarga && indiceCarga != null) {
+        final puedeRegistrarCarga =
+            ultimaCargaRegistrada == null ||
+            punto.tiempo.difference(ultimaCargaRegistrada) >=
+                _config.separacionMinimaEventoOperacion;
+
+        if (!puedeRegistroEvento(
+          puedeRegistrar: puedeRegistrarCarga,
+          punto: punto,
+          ultimoTiempoEvento: ultimaCargaRegistrada,
+        )) {
+          dentroCarga = true;
+          chuteActual = null;
+          ultimoTiempo = punto.tiempo;
+          continue;
+        }
+
+        dentroCarga = true;
+        entradasCarga++;
+        if (cargasArmadas.isNotEmpty) {
+          cargasSinCierre += cargasArmadas.length;
+          cargasArmadas.clear();
+        }
+        cargasArmadas.add(punto.tiempo);
+        ultimaCargaRegistrada = punto.tiempo;
+        chuteActual = null;
+      } else if (dentroCarga && indiceCarga == null) {
+        dentroCarga = false;
+      }
+
+      final indiceDescarga = _indiceChuteEnRango(
+        punto,
+        radioMetros: chuteActual != null
+            ? _config.radioSalidaChuteMetros
+            : _config.radioEntradaChuteMetros,
+      );
+
+      final entraPrimeraDescarga = indiceDescarga != null && chuteActual == null;
+      final cambiaDeChute =
+          indiceDescarga != null && chuteActual != null && chuteActual != indiceDescarga;
+
+      if (entraPrimeraDescarga || cambiaDeChute) {
+        final puedeRegistrarDescarga =
+            ultimaDescargaRegistrada == null ||
+            punto.tiempo.difference(ultimaDescargaRegistrada) >=
+                _config.separacionMinimaEventoOperacion;
+
+        if (!puedeRegistroEvento(
+          puedeRegistrar: puedeRegistrarDescarga,
+          punto: punto,
+          ultimoTiempoEvento: ultimaDescargaRegistrada,
+        )) {
+          chuteActual = indiceDescarga;
+          ultimoTiempo = punto.tiempo;
+          continue;
+        }
+
+        llegadasDescarga++;
+        ultimaDescargaRegistrada = punto.tiempo;
+
+        if (cargasArmadas.isNotEmpty) {
+          final tiempoInicioCiclo = cargasArmadas.removeLast();
+          final usoInterpolacion = puntos.any(
+            (p) =>
+                p.payload['__interpolado'] == true &&
+                !p.tiempo.isBefore(tiempoInicioCiclo) &&
+                !p.tiempo.isAfter(punto.tiempo),
+          );
+          final tiempoCicloMin =
+              punto.tiempo.difference(tiempoInicioCiclo).inSeconds / 60.0;
+          if (tiempoCicloMin > 0) {
+            final tiempoDetenidoPermitidoMin = _calcularTiempoDetenidoPermitidoMin(
+              puntos: puntos,
+              inicio: tiempoInicioCiclo,
+              fin: punto.tiempo,
+            );
+
+            ciclos.add(
+              _CicloOperativo(
+                tiempoCicloMin: tiempoCicloMin,
+                tiempoDetenidoPermitidoMin: tiempoDetenidoPermitidoMin,
+                chuteInicio: indiceDescarga!,
+                chuteFin: indiceDescarga,
+              ),
+            );
+            if (usoInterpolacion) {
+              ciclosRecuperadosPorInterpolacion++;
+            }
+          }
+        } else {
+          descargasSinCargaPrevia++;
+        }
+      }
+
+      chuteActual = indiceDescarga;
+      ultimoTiempo = punto.tiempo;
+    }
+
+    cargasSinCierre = cargasArmadas.length;
+
+    return _ResultadoOperacion(
+      entradasCarga: entradasCarga,
+      llegadasDescarga: llegadasDescarga,
+      cargasSinCierre: cargasSinCierre,
+      descargasSinCargaPrevia: descargasSinCargaPrevia,
+      ciclosRecuperadosPorInterpolacion: ciclosRecuperadosPorInterpolacion,
+      ciclos: ciclos,
+    );
+  }
+
+  int? _indiceCargaEnRango(
+    PuntoTrayectoria<Map<String, dynamic>> punto, {
+    required double radioMetros,
+  }) {
+    for (var i = 0; i < _config.puntosCarga.length; i++) {
+      final carga = _config.puntosCarga[i];
+      final distancia = _limpiador.distanciaMetros(
+        punto.latitud,
+        punto.longitud,
+        carga.latitud,
+        carga.longitud,
+      );
+      if (distancia <= radioMetros) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  int? _indiceChuteEnRango(
+    PuntoTrayectoria<Map<String, dynamic>> punto, {
+    required double radioMetros,
+  }) {
+    for (var i = 0; i < _config.puntosDescarga.length; i++) {
+      final chute = _config.puntosDescarga[i];
+      final distancia = _limpiador.distanciaMetros(
+        punto.latitud,
+        punto.longitud,
+        chute.latitud,
+        chute.longitud,
+      );
+      if (distancia <= radioMetros) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  bool puedeRegistroEvento({
+    required bool puedeRegistrar,
+    required PuntoTrayectoria<Map<String, dynamic>> punto,
+    required DateTime? ultimoTiempoEvento,
+  }) {
+    if (puedeRegistrar) return true;
+    if (ultimoTiempoEvento == null) return true;
+    return punto.tiempo.difference(ultimoTiempoEvento) >=
+        _config.separacionMinimaEventoOperacion;
+  }
+
+  String _construirClaveCache(
+    ModeloEquipo equipo,
+    List<PuntoTrayectoria<Map<String, dynamic>>> puntosNormalizados,
+  ) {
+    final primero = puntosNormalizados.first.tiempo.toIso8601String();
+    final ultimo = puntosNormalizados.last.tiempo.toIso8601String();
+    return '${equipo.id}|${puntosNormalizados.length}|$primero|$ultimo';
+  }
 }
 
-class _EventoLlegada {
-  final DateTime tiempo;
-  final int indiceChute;
+class _CacheResultadoProcesado {
+  final ResultadoProcesadoOperador resultado;
+  final DateTime creadoEn;
 
-  const _EventoLlegada({
-    required this.tiempo,
-    required this.indiceChute,
+  _CacheResultadoProcesado(this.resultado) : creadoEn = DateTime.now();
+
+  bool expirado(Duration ttl) => DateTime.now().difference(creadoEn) > ttl;
+}
+
+class _ResultadoReconstruccion {
+  final List<PuntoTrayectoria<Map<String, dynamic>>> puntosCombinados;
+  final List<PuntoTrayectoria<Map<String, dynamic>>> puntosReconstruidos;
+  final int saltosDescartados;
+
+  const _ResultadoReconstruccion({
+    required this.puntosCombinados,
+    required this.puntosReconstruidos,
+    required this.saltosDescartados,
   });
 }
 
@@ -523,5 +1152,33 @@ class _CicloOperativo {
     required this.tiempoDetenidoPermitidoMin,
     required this.chuteInicio,
     required this.chuteFin,
+  });
+}
+
+class _ResultadoOperacion {
+  final int entradasCarga;
+  final int llegadasDescarga;
+  final int cargasSinCierre;
+  final int descargasSinCargaPrevia;
+  final int ciclosRecuperadosPorInterpolacion;
+  final List<_CicloOperativo> ciclos;
+
+  const _ResultadoOperacion({
+    required this.entradasCarga,
+    required this.llegadasDescarga,
+    required this.cargasSinCierre,
+    required this.descargasSinCargaPrevia,
+    required this.ciclosRecuperadosPorInterpolacion,
+    required this.ciclos,
+  });
+}
+
+class _ResultadoMetricas {
+  final MetricasOperadorDiarias metricas;
+  final AuditoriaOperacion auditoria;
+
+  const _ResultadoMetricas({
+    required this.metricas,
+    required this.auditoria,
   });
 }

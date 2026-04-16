@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as ll;
-import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
@@ -33,7 +32,6 @@ class PaginaPerfilEquipo extends StatefulWidget {
 
 class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
-  final LimpiadorTrayectoria _limpiador = const LimpiadorTrayectoria();
   final ServicioMetricasOperador _servicioMetricas =
       const ServicioMetricasOperador();
   late DateTime _fechaConsulta;
@@ -49,21 +47,9 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     return Scaffold(
       backgroundColor: _colorNeutral900,
       appBar: AppBar(
-        title: Text(
-          'Perfil de Operador · ${DateFormat('dd/MM/yyyy').format(_fechaConsulta)}',
-        ),
+        title: const Text('Perfil de Operador'),
         backgroundColor: _colorNeutral900,
         foregroundColor: _colorPrimary,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _mostrarControlesFecha,
-        backgroundColor: _colorPrimary,
-        foregroundColor: Colors.black,
-        icon: const Icon(Icons.calendar_month),
-        label: const Text(
-          'Fecha',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
       ),
       body: FutureBuilder<_ResumenPerfilEquipo>(
         future: _cargarResumenPerfil(),
@@ -172,8 +158,15 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     }
     puntos.sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
 
-    final puntosValidos = puntos.where(_esPuntoUsable).toList();
-    final ultimo = puntosValidos.isNotEmpty ? puntosValidos.last : null;
+    final resultado = _servicioMetricas.procesarDatosUnidad(
+      equipo: widget.equipo,
+      puntosCrudos: puntos,
+    );
+    final ultimo = resultado.puntosLimpios.isNotEmpty
+        ? resultado.puntosLimpios.last.payload
+        : (resultado.puntosNormalizados.isNotEmpty
+            ? resultado.puntosNormalizados.last.payload
+            : null);
     final ultimoTiempo = ultimo == null
         ? null
         : DateTime.tryParse(ultimo['tiempo']?.toString() ?? '');
@@ -182,17 +175,11 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     final activo = ultimoTiempo != null &&
         ahora.difference(ultimoTiempo).inSeconds.abs() <= 60;
 
-    final conectadoDesde = activo && puntosValidos.isNotEmpty
-        ? DateTime.tryParse(puntosValidos.first['tiempo']?.toString() ?? '')
+    final conectadoDesde = activo && resultado.puntosLimpios.isNotEmpty
+        ? resultado.puntosLimpios.first.tiempo
         : ultimoTiempo;
-    final resumenMovimiento = _servicioMetricas.calcularResumenMovimiento(
-      equipo: widget.equipo,
-      puntosCrudos: puntos,
-    );
-    final metricas = _servicioMetricas.calcularMetricasDiarias(
-      equipo: widget.equipo,
-      puntosCrudos: puntos,
-    );
+    final resumenMovimiento = resultado.resumenMovimiento;
+    final metricas = resultado.metricas;
 
     return _ResumenPerfilEquipo(
       nombreCorto: _abreviarNombre(widget.equipo.nombreMostrar),
@@ -219,32 +206,30 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
       mediaCicloMin: metricas.mediaCicloMin,
       maxCicloMin: metricas.maxCicloMin,
       minCicloMin: metricas.minCicloMin,
+      tiempoPerdidoAlteracionMin: metricas.tiempoPerdidoAlteracionMin,
       sobretiempoTotalMin: metricas.sobretiempoTotalMin,
       sobretiempoPermitidoMin: metricas.sobretiempoPermitidoMin,
       pagoIneficiencia: metricas.pagoIneficiencia,
       costoIneficiencia: metricas.costoIneficiencia,
       almuerzoDesayunoInfo: metricas.almuerzoDesayunoInfo,
+      entradasCarga: metricas.entradasCarga,
+      llegadasDetectadas: metricas.llegadasDetectadas,
+      llegadasDescarga: metricas.llegadasDescarga,
+      cantidadPuntosCarga: metricas.cantidadPuntosCarga,
+      cantidadChutes: metricas.cantidadChutes,
+      radioEntradaCargaMetros: metricas.radioEntradaCargaMetros,
+      radioSalidaCargaMetros: metricas.radioSalidaCargaMetros,
+      radioEntradaChuteMetros: metricas.radioEntradaChuteMetros,
+      radioSalidaChuteMetros: metricas.radioSalidaChuteMetros,
+      radioChuteMetros: metricas.radioChuteMetros,
+      cargasSinCierre: resultado.auditoriaOperacion.cargasSinCierre,
+      descargasSinCargaPrevia:
+          resultado.auditoriaOperacion.descargasSinCargaPrevia,
+      gapsLargos: resultado.auditoriaOperacion.gapsLargos,
+      outliersDuracion: resultado.auditoriaOperacion.outliersDuracion,
+      ciclosRecuperadosPorInterpolacion:
+          resultado.auditoriaOperacion.ciclosRecuperadosPorInterpolacion,
       tieneMuestraSuficiente: metricas.tieneMuestraSuficiente,
-    );
-  }
-
-  bool _esPuntoUsable(Map<String, dynamic> punto) {
-    final lat = (punto['lat_grados'] as num?)?.toDouble();
-    final lon = (punto['lon_grados'] as num?)?.toDouble();
-    final tiempo = DateTime.tryParse(punto['tiempo']?.toString() ?? '');
-
-    return lat != null &&
-        lon != null &&
-        tiempo != null &&
-        _limpiador.coordenadaEsValida(lat, lon);
-  }
-
-  PuntoTrayectoria<Map<String, dynamic>> _mapToPunto(Map<String, dynamic> punto) {
-    return PuntoTrayectoria<Map<String, dynamic>>(
-      latitud: (punto['lat_grados'] as num).toDouble(),
-      longitud: (punto['lon_grados'] as num).toDouble(),
-      tiempo: DateTime.parse(punto['tiempo']),
-      payload: punto,
     );
   }
 
@@ -256,129 +241,6 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
 
   bool _esMismoDia(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  void _cambiarFechaConsulta(int diasDelta) {
-    final ahora = DateTime.now();
-    final nuevaFecha = DateTime(
-      _fechaConsulta.year,
-      _fechaConsulta.month,
-      _fechaConsulta.day + diasDelta,
-    );
-
-    final hoy = DateTime(ahora.year, ahora.month, ahora.day);
-    final minima = DateTime(2024, 1, 1);
-    if (nuevaFecha.isAfter(hoy) || nuevaFecha.isBefore(minima)) {
-      return;
-    }
-
-    setState(() {
-      _fechaConsulta = nuevaFecha;
-    });
-  }
-
-  Future<void> _mostrarControlesFecha() async {
-    if (!mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF171717),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            void actualizar(int delta) {
-              _cambiarFechaConsulta(delta);
-              setModalState(() {});
-            }
-
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Cambiar fecha de prueba',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      DateFormat('dd/MM/yyyy').format(_fechaConsulta),
-                      style: const TextStyle(
-                        color: Colors.orange,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildBottomSheetAction(
-                            label: '-1 dia',
-                            icon: Icons.chevron_left,
-                            onTap: () => actualizar(-1),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildBottomSheetAction(
-                            label: '+1 dia',
-                            icon: Icons.chevron_right,
-                            onTap: () => actualizar(1),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildBottomSheetAction(
-                            label: '-7 dias',
-                            icon: Icons.keyboard_double_arrow_left,
-                            onTap: () => actualizar(-7),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildBottomSheetAction(
-                            label: 'Hoy',
-                            icon: Icons.today,
-                            onTap: () {
-                              setState(() {
-                                _fechaConsulta = DateTime.now();
-                              });
-                              setModalState(() {});
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   String _formatearMinutosDashboard(double? valor, {String sufijo = 'min'}) {
@@ -679,11 +541,22 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           rightTitle: 'Min',
           rightValue: _formatearMinutosDashboard(resumen.minCicloMin),
         ),
+        const SizedBox(height: 10),
+        _buildSimpleLineItem(
+          'Operación',
+          'carga ${resumen.entradasCarga} | descargas ${resumen.llegadasDescarga} | ciclos ${resumen.ciclos}',
+        ),
+        const SizedBox(height: 10),
+        _buildSimpleLineItem(
+          'Geocercas',
+          'Carga ${resumen.radioEntradaCargaMetros.toStringAsFixed(0)}/${resumen.radioSalidaCargaMetros.toStringAsFixed(0)} m | '
+              'Chute ${resumen.radioEntradaChuteMetros.toStringAsFixed(0)}/${resumen.radioSalidaChuteMetros.toStringAsFixed(0)} m',
+        ),
         const SizedBox(height: 12),
         _buildHorizontalDivider(),
         SizedBox(height: spacing),
         SizedBox(
-          height: 176,
+          height: 188,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -708,7 +581,17 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
                         value: _formatearMontoDashboard(resumen.pagoIneficiencia),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: _buildStackLineBlock(
+                        title: 'Tiempo perdido',
+                        value: _formatearMinutosDashboard(
+                          resumen.tiempoPerdidoAlteracionMin,
+                          sufijo: 'min',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Expanded(
                       child: _buildStackLineBlock(
                         title: 'Costo de ineficiencia',
@@ -1244,21 +1127,28 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           textAlign: TextAlign.center,
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
+            height: 1.1,
           ),
         ),
-        const SizedBox(height: 10),
-        Text(
-          value,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
+        const SizedBox(height: 6),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         _buildHorizontalDivider(),
       ],
     );
@@ -1648,11 +1538,27 @@ class _ResumenPerfilEquipo {
     required this.mediaCicloMin,
     required this.maxCicloMin,
     required this.minCicloMin,
+    required this.tiempoPerdidoAlteracionMin,
     required this.sobretiempoTotalMin,
     required this.sobretiempoPermitidoMin,
     required this.pagoIneficiencia,
     required this.costoIneficiencia,
     required this.almuerzoDesayunoInfo,
+    required this.entradasCarga,
+    required this.llegadasDetectadas,
+    required this.llegadasDescarga,
+    required this.cantidadPuntosCarga,
+    required this.cantidadChutes,
+    required this.radioEntradaCargaMetros,
+    required this.radioSalidaCargaMetros,
+    required this.radioEntradaChuteMetros,
+    required this.radioSalidaChuteMetros,
+    required this.radioChuteMetros,
+    required this.cargasSinCierre,
+    required this.descargasSinCargaPrevia,
+    required this.gapsLargos,
+    required this.outliersDuracion,
+    required this.ciclosRecuperadosPorInterpolacion,
     required this.tieneMuestraSuficiente,
   });
 
@@ -1676,10 +1582,27 @@ class _ResumenPerfilEquipo {
   final double? mediaCicloMin;
   final double? maxCicloMin;
   final double? minCicloMin;
+  final double? tiempoPerdidoAlteracionMin;
   final double? sobretiempoTotalMin;
   final double sobretiempoPermitidoMin;
   final double? pagoIneficiencia;
   final double? costoIneficiencia;
   final String almuerzoDesayunoInfo;
+  final int entradasCarga;
+  final int llegadasDetectadas;
+  final int llegadasDescarga;
+  final int cantidadPuntosCarga;
+  final int cantidadChutes;
+  final double radioEntradaCargaMetros;
+  final double radioSalidaCargaMetros;
+  final double radioEntradaChuteMetros;
+  final double radioSalidaChuteMetros;
+  final double radioChuteMetros;
+  final int cargasSinCierre;
+  final int descargasSinCargaPrevia;
+  final int gapsLargos;
+  final int outliersDuracion;
+  final int ciclosRecuperadosPorInterpolacion;
   final bool tieneMuestraSuficiente;
 }
+

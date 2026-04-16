@@ -5,6 +5,8 @@ import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/modelos/equipo_rendimiento.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/modelos/punto_rendimiento.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/repositorios/repositorio_rendimiento_operacional.dart';
+import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.dart';
+import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
 
 class ComparativoRutasPage extends StatefulWidget {
   const ComparativoRutasPage({super.key});
@@ -16,6 +18,8 @@ class ComparativoRutasPage extends StatefulWidget {
 class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
   final RepositorioRendimientoOperacional _repo =
       RepositorioRendimientoOperacional();
+  final ServicioMetricasOperador _servicioMetricas =
+      const ServicioMetricasOperador();
 
   DateTime _fechaSeleccionada = DateTime.now();
   List<EquipoRendimiento> _equipos = const [];
@@ -25,6 +29,8 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
   String? _error;
 
   List<PuntoRendimiento> _puntosCrudos = const [];
+  ResultadoProcesadoOperador _resultadoProcesado =
+      ResultadoProcesadoOperador.vacio;
   ResultadoLimpiezaTrayectoria<PuntoRendimiento> _resultado =
       const ResultadoLimpiezaTrayectoria(
         puntos: [],
@@ -94,12 +100,31 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
             (punto) => PuntoTrayectoria<PuntoRendimiento>(
               latitud: punto.latitud,
               longitud: punto.longitud,
-            tiempo: punto.tiempo,
-            payload: punto,
-          ),
-        )
-        .toList();
+              tiempo: punto.tiempo,
+              payload: punto,
+            ),
+          )
+          .toList();
+      final equipoModelo = ModeloEquipo(
+        id: equipo.idEquipoControl,
+        nombre: equipo.nombre,
+        codigo: equipo.codigoEquipoControl,
+      );
+      final puntosServicio = crudosValidos
+          .map(
+            (punto) => <String, dynamic>{
+              'fk_emisor': equipo.idEquipoControl,
+              'lat_grados': punto.latitud,
+              'lon_grados': punto.longitud,
+              'tiempo': punto.tiempo.toIso8601String(),
+            },
+          )
+          .toList();
       final resultado = _crearLimpiador().limpiar(convertidos);
+      final resultadoProcesado = _servicioMetricas.procesarDatosUnidad(
+        equipo: equipoModelo,
+        puntosCrudos: puntosServicio,
+      );
 
       if (!mounted) {
         return;
@@ -107,6 +132,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
 
       setState(() {
         _puntosCrudos = crudosValidos;
+        _resultadoProcesado = resultadoProcesado;
         _resultado = resultado;
         _cargando = false;
       });
@@ -162,6 +188,29 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
     }
   }
 
+  List<PuntoRendimiento> _convertirPuntosResultado(
+    List<PuntoTrayectoria<Map<String, dynamic>>> puntos,
+  ) {
+    return puntos
+        .map(
+          (punto) => PuntoRendimiento(
+            latitud: punto.latitud,
+            longitud: punto.longitud,
+            tiempo: punto.tiempo,
+          ),
+        )
+        .toList();
+  }
+
+  List<List<PuntoRendimiento>> _convertirSegmentosResultado(
+    List<List<PuntoTrayectoria<Map<String, dynamic>>>> segmentos,
+  ) {
+    return segmentos
+        .map(_convertirPuntosResultado)
+        .where((segmento) => segmento.length >= 2)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_cargandoEquipos) {
@@ -170,8 +219,12 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
       );
     }
 
-    final puntosFiltrados = _resultado.puntos.map((punto) => punto.payload).toList();
-    final perdidos = _puntosCrudos.length - puntosFiltrados.length;
+    final puntosFiltrados = _convertirPuntosResultado(
+      _resultadoProcesado.puntosLimpios,
+    );
+    final segmentosFiltrados = _convertirSegmentosResultado(
+      _resultadoProcesado.segmentosReconstruidos,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -265,7 +318,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Filtro manual de la ruta filtrada',
+                      'Filtro manual del analisis',
                       style: TextStyle(
                         color: Colors.orange,
                         fontWeight: FontWeight.bold,
@@ -309,7 +362,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                           Text(
                             _modoFiltro == _ModoFiltro.personalizado
                                 ? 'Km/h maximo manual: ${_velocidadManualKmh.toStringAsFixed(0)}'
-                                : 'Km/h maximo aplicado por modo: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
+                                : 'Km/h maximo del analisis: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
                             style: const TextStyle(color: Colors.white70),
                           ),
                           Slider(
@@ -340,7 +393,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                             child: Text(
                               _modoFiltro == _ModoFiltro.personalizado
                                   ? 'Km/h maximo manual: ${_velocidadManualKmh.toStringAsFixed(0)}'
-                                  : 'Km/h maximo aplicado por modo: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
+                                  : 'Km/h maximo del analisis: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
                               style: const TextStyle(color: Colors.white70),
                             ),
                           ),
@@ -371,7 +424,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                       ),
                     const SizedBox(height: 6),
                     Text(
-                      'La ruta cruda no cambia. La ruta filtrada usa la estadistica de tus datos y este limite manual para mostrarle al cliente un escenario mas lento o mas rapido sin tocar codigo.',
+                      'La ruta cruda no cambia. La ruta reconstruida completa huecos cortos cada 5 segundos y corta solo reconexiones o saltos absurdos. El filtro manual solo ajusta el analisis; no borra el dibujo del mapa.',
                       style: const TextStyle(
                         color: Colors.white60,
                         fontSize: 12,
@@ -386,8 +439,21 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                 runSpacing: 8,
                 children: [
                   _chip('Crudos validos: ${_puntosCrudos.length}'),
-                  _chip('Filtrados: ${puntosFiltrados.length}'),
-                  _chip('Perdidos: $perdidos'),
+                  _chip(
+                    'Puntos reales: ${_resultadoProcesado.puntosReales.length}',
+                  ),
+                  _chip(
+                    'Puntos sintéticos: ${_resultadoProcesado.conteoPuntosSinteticos}',
+                  ),
+                  _chip(
+                    'Puntos visibles: ${puntosFiltrados.length}',
+                  ),
+                  _chip(
+                    'Saltos descartados: ${_resultadoProcesado.conteoSaltosDescartados}',
+                  ),
+                  _chip(
+                    'Segmentos continuos: ${segmentosFiltrados.length}',
+                  ),
                   _chip(
                     'Media: ${_resultado.estadisticas.mediaDistanciaMetros.toStringAsFixed(1)} m',
                   ),
@@ -398,7 +464,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                     'P90: ${_resultado.estadisticas.percentil90DistanciaMetros.toStringAsFixed(1)} m',
                   ),
                   _chip(
-                    'Umbral: ${_resultado.estadisticas.umbralDistanciaMetros.toStringAsFixed(1)} m / ${_resultado.estadisticas.umbralVelocidadKmh.toStringAsFixed(1)} km/h',
+                    'Reconstruccion: cada 5 s | gap maximo 20 s',
                     color: Colors.orangeAccent.withOpacity(0.12),
                     borderColor: Colors.orangeAccent,
                   ),
@@ -443,17 +509,11 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _MapaComparativo(
-                        titulo: 'Ruta Filtrada',
+                        titulo: 'Ruta Reconstruida',
                         puntos: puntosFiltrados,
-                        segmentosFiltrados: _resultado.segmentos
-                            .map(
-                              (segmento) =>
-                                  segmento.map((punto) => punto.payload).toList(),
-                            )
-                            .toList(),
+                        segmentosFiltrados: segmentosFiltrados,
                         colorRutaCruda: Colors.lightGreenAccent,
-                        subtitulo:
-                            'Modo ${_modoFiltro.etiqueta} | ${_velocidadAplicadaKmh.toStringAsFixed(0)} km/h',
+                        subtitulo: 'Ruta reconstruida | huecos <= 20 s',
                       ),
                     ),
                   ],
@@ -473,17 +533,11 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
               SizedBox(
                 height: mapHeight,
                 child: _MapaComparativo(
-                  titulo: 'Ruta Filtrada',
+                  titulo: 'Ruta Reconstruida',
                   puntos: puntosFiltrados,
-                  segmentosFiltrados: _resultado.segmentos
-                      .map(
-                        (segmento) =>
-                            segmento.map((punto) => punto.payload).toList(),
-                      )
-                      .toList(),
+                  segmentosFiltrados: segmentosFiltrados,
                   colorRutaCruda: Colors.lightGreenAccent,
-                  subtitulo:
-                      'Modo ${_modoFiltro.etiqueta} | ${_velocidadAplicadaKmh.toStringAsFixed(0)} km/h',
+                  subtitulo: 'Ruta reconstruida | huecos <= 20 s',
                 ),
               ),
             ],

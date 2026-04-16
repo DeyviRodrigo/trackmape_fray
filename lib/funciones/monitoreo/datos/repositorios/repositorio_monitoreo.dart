@@ -11,6 +11,12 @@ class RepositorioMonitoreo {
   static const int _limiteRecienteStream = 5000;
   static const int _limiteDiagnostico = 1000;
   static const int _tamanoPagina = 1000;
+  static const Duration _ttlEquipos = Duration(minutes: 5);
+  static const Duration _ttlTrayectoriaHistorica = Duration(minutes: 10);
+  static const Duration _ttlTrayectoriaHoy = Duration(seconds: 20);
+  static const Duration _ttlUltimasPosiciones = Duration(seconds: 10);
+
+  static final Map<String, _CacheListaMapas> _cacheListasMapas = {};
 
   Stream<List<ModeloEquipo>> streamEquipos({
     String? tipoEquipoControl,
@@ -40,6 +46,12 @@ class RepositorioMonitoreo {
   Future<List<Map<String, dynamic>>> obtenerEquiposRaw({
     bool soloCodigosConPrefijoExclamacion = false,
   }) async {
+    final cacheKey = 'equipos::$soloCodigosConPrefijoExclamacion';
+    final cache = _cacheListasMapas[cacheKey];
+    if (cache != null && !cache.expirado(_ttlEquipos)) {
+      return _clonarListaMapas(cache.data);
+    }
+
     try {
       final res = await _supabase.from('equipos_control').select();
       var equipos = List<Map<String, dynamic>>.from(res).map(_normalizarEquipo).toList();
@@ -51,6 +63,7 @@ class RepositorioMonitoreo {
         }).toList();
       }
 
+      _cacheListasMapas[cacheKey] = _CacheListaMapas(_clonarListaMapas(equipos));
       return equipos;
     } catch (e) {
       print('Error en obtenerEquiposRaw: $e');
@@ -64,6 +77,7 @@ class RepositorioMonitoreo {
           .from('equipos_control')
           .update(datos)
           .eq('id_equipo_control', id);
+      _cacheListasMapas.removeWhere((key, _) => key.startsWith('equipos::'));
       return true;
     } catch (e) {
       print('Error al actualizar equipo: $e');
@@ -92,6 +106,12 @@ class RepositorioMonitoreo {
   }
 
   Future<List<Map<String, dynamic>>> obtenerUltimasPosiciones() async {
+    const cacheKey = 'ultimas_posiciones';
+    final cache = _cacheListasMapas[cacheKey];
+    if (cache != null && !cache.expirado(_ttlUltimasPosiciones)) {
+      return _clonarListaMapas(cache.data);
+    }
+
     try {
       final equiposPorCodigo = await _obtenerEquiposPorCodigo(
         soloCodigosConPrefijoExclamacion: true,
@@ -112,7 +132,9 @@ class RepositorioMonitoreo {
           listaUnica[idEmisor] = Map<String, dynamic>.from(item);
         }
       }
-      return listaUnica.values.toList();
+      final resultado = listaUnica.values.toList();
+      _cacheListasMapas[cacheKey] = _CacheListaMapas(_clonarListaMapas(resultado));
+      return resultado;
     } catch (e) {
       print('Error en obtenerUltimasPosiciones: $e');
       return [];
@@ -138,8 +160,19 @@ class RepositorioMonitoreo {
   }
 
   Future<List<Map<String, dynamic>>> obtenerTrayectoriaPorFecha(DateTime fecha) async {
+    final esHoy = _esMismoDia(fecha, DateTime.now());
+    final cacheKey = 'trayectoria::${_claveFecha(fecha)}';
+    final cache = _cacheListasMapas[cacheKey];
+    final ttl = esHoy ? _ttlTrayectoriaHoy : _ttlTrayectoriaHistorica;
+    if (cache != null && !cache.expirado(ttl)) {
+      return _clonarListaMapas(cache.data);
+    }
+
     try {
-      return _obtenerPosicionesTempValidadasPorFecha(fecha);
+      final resultado = await _obtenerPosicionesTempValidadasPorFecha(fecha);
+      _cacheListasMapas[cacheKey] =
+          _CacheListaMapas(_clonarListaMapas(resultado));
+      return resultado;
     } catch (e) {
       print('Error en obtenerTrayectoriaPorFecha: $e');
       return [];
@@ -355,4 +388,26 @@ class RepositorioMonitoreo {
 
     return limpio;
   }
+
+  List<Map<String, dynamic>> _clonarListaMapas(List<Map<String, dynamic>> origen) {
+    return origen.map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  bool _esMismoDia(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _claveFecha(DateTime fecha) {
+    final normalizada = DateTime(fecha.year, fecha.month, fecha.day);
+    return normalizada.toIso8601String().split('T').first;
+  }
+}
+
+class _CacheListaMapas {
+  final List<Map<String, dynamic>> data;
+  final DateTime creadoEn;
+
+  _CacheListaMapas(this.data) : creadoEn = DateTime.now();
+
+  bool expirado(Duration ttl) => DateTime.now().difference(creadoEn) > ttl;
 }

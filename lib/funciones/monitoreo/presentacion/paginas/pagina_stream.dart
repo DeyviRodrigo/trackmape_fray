@@ -292,15 +292,27 @@ class _PaginaStreamState extends State<PaginaStream> {
 
           final idsTarjetas = equiposInfo.keys.toList()
             ..sort((a, b) => _obtenerEtiquetaEquipo(a).compareTo(_obtenerEtiquetaEquipo(b)));
-          final circulosChute = _configMetricas.puntosDescarga
+          final circulosChuteEntrada = _configMetricas.puntosDescarga
               .map(
                 (punto) => CircleMarker(
                   point: ll.LatLng(punto.latitud, punto.longitud),
-                  radius: _configMetricas.radioChuteMetros,
+                  radius: _configMetricas.radioEntradaChuteMetros,
                   useRadiusInMeter: true,
                   color: Colors.orange.withOpacity(0.18),
                   borderColor: Colors.orangeAccent,
                   borderStrokeWidth: 2,
+                ),
+              )
+              .toList();
+          final circulosChuteSalida = _configMetricas.puntosDescarga
+              .map(
+                (punto) => CircleMarker(
+                  point: ll.LatLng(punto.latitud, punto.longitud),
+                  radius: _configMetricas.radioSalidaChuteMetros,
+                  useRadiusInMeter: true,
+                  color: Colors.orange.withOpacity(0.06),
+                  borderColor: Colors.orange.withOpacity(0.45),
+                  borderStrokeWidth: 1.2,
                 ),
               )
               .toList();
@@ -323,6 +335,57 @@ class _PaginaStreamState extends State<PaginaStream> {
                       'Chute ${entry.key + 1}',
                       style: const TextStyle(
                         color: Colors.orangeAccent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+              .toList();
+          final circulosCargaEntrada = _configMetricas.puntosCarga
+              .map(
+                (punto) => CircleMarker(
+                  point: ll.LatLng(punto.latitud, punto.longitud),
+                  radius: _configMetricas.radioEntradaCargaMetros,
+                  useRadiusInMeter: true,
+                  color: Colors.cyanAccent.withOpacity(0.14),
+                  borderColor: Colors.cyanAccent,
+                  borderStrokeWidth: 2,
+                ),
+              )
+              .toList();
+          final circulosCargaSalida = _configMetricas.puntosCarga
+              .map(
+                (punto) => CircleMarker(
+                  point: ll.LatLng(punto.latitud, punto.longitud),
+                  radius: _configMetricas.radioSalidaCargaMetros,
+                  useRadiusInMeter: true,
+                  color: Colors.cyanAccent.withOpacity(0.04),
+                  borderColor: Colors.cyanAccent.withOpacity(0.35),
+                  borderStrokeWidth: 1.2,
+                ),
+              )
+              .toList();
+          final marcadoresCarga = _configMetricas.puntosCarga
+              .asMap()
+              .entries
+              .map(
+                (entry) => Marker(
+                  point: ll.LatLng(entry.value.latitud, entry.value.longitud),
+                  width: 70,
+                  height: 28,
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.82),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.cyanAccent.withOpacity(0.9)),
+                    ),
+                    child: const Text(
+                      'Carga',
+                      style: TextStyle(
+                        color: Colors.cyanAccent,
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
                       ),
@@ -354,10 +417,18 @@ class _PaginaStreamState extends State<PaginaStream> {
                   TileLayer(
                     urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                   ),
-                  CircleLayer(circles: circulosChute),
+                  CircleLayer(
+                    circles: [
+                      ...circulosCargaSalida,
+                      ...circulosCargaEntrada,
+                      ...circulosChuteSalida,
+                      ...circulosChuteEntrada,
+                    ],
+                  ),
                   PolylineLayer(polylines: polylines),
                   MarkerLayer(
                     markers: [
+                      ...marcadoresCarga,
                       ...marcadoresChute,
                       ...marcadoresVisibles.values,
                     ],
