@@ -47,6 +47,8 @@ dependencies:
   google_fonts: ^6.2.1
   cupertino_icons: ^1.0.8
   flutter_map: ^7.0.2
+  file_picker: ^8.1.7
+  xml: ^6.5.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

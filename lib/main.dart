@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -31,6 +32,7 @@ class AplicacionTrackMAPE extends StatelessWidget {
     return MaterialApp(
       title: 'TrackMAPE',
       debugShowCheckedModeBanner: false,
+      scrollBehavior: const _TrackScrollBehavior(),
       theme: ThemeData.dark().copyWith(
         primaryColor: Colors.orange,
         scaffoldBackgroundColor: const Color(0xFF121212),
@@ -38,4 +40,17 @@ class AplicacionTrackMAPE extends StatelessWidget {
       home: const ContenedorPrincipal(),
     );
   }
+}
+
+class _TrackScrollBehavior extends MaterialScrollBehavior {
+  const _TrackScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.unknown,
+      };
 }

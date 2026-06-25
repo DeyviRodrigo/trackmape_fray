@@ -4,6 +4,8 @@ import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
 import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
+import 'package:trackmape_sup/funciones/gis/datos/repositorios/repositorio_gis.dart';
+import 'package:trackmape_sup/funciones/gis/presentacion/widgets/capas_gis_mapa.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
@@ -14,17 +16,25 @@ class PaginaHistorico extends StatefulWidget {
     this.equipoIdFiltro,
     this.nombreEquipoFiltro,
     this.fechaInicial,
+    this.empresaFiltro,
   });
 
   final String? equipoIdFiltro;
   final String? nombreEquipoFiltro;
   final DateTime? fechaInicial;
+  final String? empresaFiltro;
 
   @override
   State<PaginaHistorico> createState() => _PaginaHistoricoState();
 }
 
 class _PaginaHistoricoState extends State<PaginaHistorico> {
+  static const Duration _gapMaximoVisualHistorico = Duration(seconds: 20);
+  static const Duration _ventanaSaltoVisualHistorico = Duration(seconds: 12);
+  static const double _velocidadMaximaVisualHistoricoKmh = 90.0;
+  static const double _distanciaMaximaTramoHistoricoMetros = 320.0;
+  static const double _distanciaSaltoVisualHistoricoMetros = 260.0;
+
   static const List<String> _mesesEspanol = [
     'enero',
     'febrero',
@@ -51,11 +61,10 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   ];
 
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
+  final RepositorioGis _repositorioGis = RepositorioGis();
   final LimpiadorTrayectoria _limpiador = const LimpiadorTrayectoria();
   final ServicioMetricasOperador _servicioMetricas =
       const ServicioMetricasOperador();
-  final ConfiguracionMetricasOperador _configMetricas =
-      ConfiguracionMetricasOperador.porDefecto;
 
   final Map<String, String> mapaEtiquetasEquipos = {};
   final Map<String, String> mapaNombresEquipos = {};
@@ -63,13 +72,17 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
   late DateTime fechaSeleccionada;
   Map<String, dynamic>? puntoSeleccionado;
+  late Future<_DatosHistoricoVista> _datosHistoricosFuture;
   double velocidadCalc = 0.0;
   String tiempoReporte = '';
+  bool _mostrarAreasGis = true;
+  bool _mostrarRutasGis = true;
 
   @override
   void initState() {
     super.initState();
     fechaSeleccionada = widget.fechaInicial ?? DateTime.now();
+    _datosHistoricosFuture = _cargarDatosHistoricos();
   }
 
   @override
@@ -89,15 +102,22 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
               child: Stack(
                 children: [
                   FutureBuilder<_DatosHistoricoVista>(
-                    future: _cargarDatosHistoricos(),
+                    future: _datosHistoricosFuture,
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
                         return const Center(
-                          child: CircularProgressIndicator(color: Colors.orange),
+                          child: CircularProgressIndicator(
+                            color: Colors.orange,
+                          ),
                         );
                       }
 
                       final datosVista = snapshot.data!;
+                      final capasGis = construirCapasGisMapa(
+                        datosVista.datosGis,
+                        mostrarAreas: _mostrarAreasGis,
+                        mostrarRutas: _mostrarRutasGis,
+                      );
                       mapaEtiquetasEquipos.clear();
                       mapaNombresEquipos.clear();
                       mapaCodigosEquipos.clear();
@@ -116,14 +136,18 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                         options: MapOptions(
                           initialCenter: puntoTrabajoLatLng,
                           initialZoom: isMobile ? 14.5 : 15,
-                          onTap: (_, __) => setState(() => puntoSeleccionado = null),
+                          onTap: (_, __) =>
+                              setState(() => puntoSeleccionado = null),
                         ),
                         children: [
                           TileLayer(
                             urlTemplate:
                                 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                           ),
-                          CircleLayer(circles: _construirCirculosOperativos()),
+                          if (capasGis.poligonos.isNotEmpty)
+                            PolygonLayer(polygons: capasGis.poligonos),
+                          if (capasGis.rutas.isNotEmpty)
+                            PolylineLayer(polylines: capasGis.rutas),
                           PolylineLayer(
                             polylines: _generarLineas(
                               datosVista.resultadosPorEquipo,
@@ -131,7 +155,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                           ),
                           MarkerLayer(
                             markers: [
-                              ..._construirMarcadoresOperativos(),
+                              ...capasGis.marcadores,
                               ..._construirMarcadores(
                                 datosVista.resultadosPorEquipo,
                               ),
@@ -162,6 +186,11 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                   ),
                   if (puntoSeleccionado != null)
                     _buildPanelInfo(isMobile: isMobile),
+                  Positioned(
+                    top: isMobile ? 148 : 20,
+                    right: 20,
+                    child: _buildSelectorCapasGis(isMobile: isMobile),
+                  ),
                 ],
               ),
             ),
@@ -172,7 +201,13 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   }
 
   Future<_DatosHistoricoVista> _cargarDatosHistoricos() async {
-    final equiposRaw = await _repositorio.obtenerEquiposRaw();
+    final empresaFiltro =
+        widget.empresaFiltro ?? RepositorioMonitoreo.empresaMonitoreoFija;
+    final equiposRaw = await _repositorio.obtenerEquiposRaw(
+      tipoEquipoControl: RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
+      fkEmpresa: empresaFiltro,
+      fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
+    );
     final equiposPorId = <String, ModeloEquipo>{};
     for (final equipo in equiposRaw) {
       final modelo = ModeloEquipo.fromJson(equipo);
@@ -181,16 +216,21 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
     final trayectoriaRaw = await _repositorio.obtenerTrayectoriaPorFecha(
       fechaSeleccionada,
+      tipoEquipoControl: RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
+      fkEmpresa: empresaFiltro,
+      fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
     );
     final trayectoriaFiltrada = widget.equipoIdFiltro == null
         ? trayectoriaRaw
         : trayectoriaRaw
-            .where((punto) => punto['fk_emisor']?.toString() == widget.equipoIdFiltro)
-            .toList();
+              .where(
+                (punto) =>
+                    punto['fk_emisor']?.toString() == widget.equipoIdFiltro,
+              )
+              .toList();
 
-    final trayectoria = await _mezclarConexionesSiHoy(trayectoriaFiltrada);
     final datosPorEquipo = <String, List<Map<String, dynamic>>>{};
-    for (final punto in trayectoria) {
+    for (final punto in trayectoriaFiltrada) {
       final id = punto['fk_emisor']?.toString();
       if (id == null || id.isEmpty) continue;
       datosPorEquipo.putIfAbsent(id, () => []);
@@ -199,7 +239,8 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
     final resultadosPorEquipo = <String, ResultadoProcesadoOperador>{};
     for (final entry in datosPorEquipo.entries) {
-      final equipo = equiposPorId[entry.key] ??
+      final equipo =
+          equiposPorId[entry.key] ??
           ModeloEquipo(
             id: entry.key,
             nombre: mapaNombresEquipos[entry.key],
@@ -211,153 +252,16 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
       );
     }
 
+    final datosGis = await _repositorioGis.obtenerDatosOperativos(
+      fkEmpresa: empresaFiltro,
+      fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
+    );
+
     return _DatosHistoricoVista(
       equiposPorId: equiposPorId,
       resultadosPorEquipo: resultadosPorEquipo,
+      datosGis: datosGis,
     );
-  }
-
-  List<CircleMarker> _construirCirculosOperativos() {
-    final circulos = <CircleMarker>[];
-
-    for (final punto in _configMetricas.puntosDescarga) {
-      circulos.add(
-        CircleMarker(
-          point: ll.LatLng(punto.latitud, punto.longitud),
-          radius: _configMetricas.radioSalidaChuteMetros,
-          useRadiusInMeter: true,
-          color: Colors.orange.withOpacity(0.05),
-          borderColor: Colors.orange.withOpacity(0.35),
-          borderStrokeWidth: 1.2,
-        ),
-      );
-      circulos.add(
-        CircleMarker(
-          point: ll.LatLng(punto.latitud, punto.longitud),
-          radius: _configMetricas.radioEntradaChuteMetros,
-          useRadiusInMeter: true,
-          color: Colors.orange.withOpacity(0.16),
-          borderColor: Colors.orangeAccent,
-          borderStrokeWidth: 2,
-        ),
-      );
-    }
-
-    for (final punto in _configMetricas.puntosCarga) {
-      circulos.add(
-        CircleMarker(
-          point: ll.LatLng(punto.latitud, punto.longitud),
-          radius: _configMetricas.radioSalidaCargaMetros,
-          useRadiusInMeter: true,
-          color: Colors.cyanAccent.withOpacity(0.04),
-          borderColor: Colors.cyanAccent.withOpacity(0.32),
-          borderStrokeWidth: 1.2,
-        ),
-      );
-      circulos.add(
-        CircleMarker(
-          point: ll.LatLng(punto.latitud, punto.longitud),
-          radius: _configMetricas.radioEntradaCargaMetros,
-          useRadiusInMeter: true,
-          color: Colors.cyanAccent.withOpacity(0.14),
-          borderColor: Colors.cyanAccent,
-          borderStrokeWidth: 2,
-        ),
-      );
-    }
-
-    return circulos;
-  }
-
-  List<Marker> _construirMarcadoresOperativos() {
-    final marcadores = <Marker>[];
-
-    for (final entry in _configMetricas.puntosDescarga.asMap().entries) {
-      marcadores.add(
-        Marker(
-          point: ll.LatLng(entry.value.latitud, entry.value.longitud),
-          width: 76,
-          height: 30,
-          child: _buildGeocercaLabel(
-            texto: 'Chute ${entry.key + 1}',
-            borde: Colors.orangeAccent,
-            textoColor: Colors.orangeAccent,
-          ),
-        ),
-      );
-    }
-
-    for (final punto in _configMetricas.puntosCarga) {
-      marcadores.add(
-        Marker(
-          point: ll.LatLng(punto.latitud, punto.longitud),
-          width: 76,
-          height: 30,
-          child: _buildGeocercaLabel(
-            texto: 'Carga',
-            borde: Colors.cyanAccent,
-            textoColor: Colors.cyanAccent,
-          ),
-        ),
-      );
-    }
-
-    return marcadores;
-  }
-
-  Widget _buildGeocercaLabel({
-    required String texto,
-    required Color borde,
-    required Color textoColor,
-  }) {
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borde),
-      ),
-      child: Text(
-        texto,
-        style: TextStyle(
-          color: textoColor,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _mezclarConexionesSiHoy(
-    List<Map<String, dynamic>> trayectoria,
-  ) async {
-    if (!_esMismoDia(fechaSeleccionada, DateTime.now())) {
-      final ordenados = [...trayectoria]
-        ..sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
-      return ordenados;
-    }
-
-    final conexiones = (await _repositorio.obtenerUltimasPosiciones()).where((punto) {
-      if (widget.equipoIdFiltro == null) return true;
-      return punto['fk_emisor']?.toString() == widget.equipoIdFiltro;
-    });
-
-    final resultado = [...trayectoria];
-    for (final conexion in conexiones) {
-      final id = conexion['fk_emisor']?.toString();
-      final tiempo = conexion['tiempo']?.toString();
-      final existe = resultado.any(
-        (punto) =>
-            punto['fk_emisor']?.toString() == id &&
-            punto['tiempo']?.toString() == tiempo,
-      );
-      if (!existe) {
-        resultado.add(Map<String, dynamic>.from(conexion));
-      }
-    }
-
-    resultado.sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
-    return resultado;
   }
 
   void _cerrarHistorico() {
@@ -386,6 +290,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
     setState(() {
       fechaSeleccionada = fechaNormalizada;
       puntoSeleccionado = null;
+      _datosHistoricosFuture = _cargarDatosHistoricos();
     });
   }
 
@@ -413,10 +318,11 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
           ? '${diff.inHours}h ${diff.inMinutes % 60}m'
           : '${diff.inMinutes} min';
 
-      final historialEmisor = historialCompleto
-          .where((p) => p['fk_emisor'] == actual['fk_emisor'])
-          .toList()
-        ..sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
+      final historialEmisor =
+          historialCompleto
+              .where((p) => p['fk_emisor'] == actual['fk_emisor'])
+              .toList()
+            ..sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
 
       final idx = historialEmisor.indexOf(actual);
       if (idx > 0) {
@@ -511,6 +417,63 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
     );
   }
 
+  Widget _buildSelectorCapasGis({required bool isMobile}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildBotonCapaGis(
+            texto: 'Areas',
+            activo: _mostrarAreasGis,
+            color: Colors.orangeAccent,
+            onTap: () => setState(() => _mostrarAreasGis = !_mostrarAreasGis),
+          ),
+          const SizedBox(width: 6),
+          _buildBotonCapaGis(
+            texto: 'Rutas',
+            activo: _mostrarRutasGis,
+            color: Colors.cyanAccent,
+            onTap: () => setState(() => _mostrarRutasGis = !_mostrarRutasGis),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBotonCapaGis({
+    required String texto,
+    required bool activo,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: activo ? color.withOpacity(0.18) : Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: activo ? color : Colors.white30),
+        ),
+        child: Text(
+          texto,
+          style: TextStyle(
+            color: activo ? color : Colors.white54,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFloatingBackButton() {
     return Material(
       color: Colors.black.withOpacity(0.82),
@@ -533,7 +496,11 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
   Widget _buildMiniCalendarCard({required bool isMobile}) {
     final ancho = isMobile ? 142.0 : 168.0;
-    final mesVisible = DateTime(fechaSeleccionada.year, fechaSeleccionada.month, 1);
+    final mesVisible = DateTime(
+      fechaSeleccionada.year,
+      fechaSeleccionada.month,
+      1,
+    );
     final offsetInicio = _indiceInicioMes(mesVisible);
     final totalDias = _diasEnMes(mesVisible.year, mesVisible.month);
 
@@ -649,19 +616,27 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                   }
 
                   final dia = index - offsetInicio + 1;
-                  final fechaDia = DateTime(mesVisible.year, mesVisible.month, dia);
+                  final fechaDia = DateTime(
+                    mesVisible.year,
+                    mesVisible.month,
+                    dia,
+                  );
                   final seleccionado = _esMismoDia(fechaDia, fechaSeleccionada);
                   final hoy = _esMismoDia(fechaDia, DateTime.now());
                   final habilitado = !_fechaFueraDeRango(fechaDia);
 
                   return InkWell(
-                    onTap: habilitado ? () => _seleccionarFechaHistorica(fechaDia) : null,
+                    onTap: habilitado
+                        ? () => _seleccionarFechaHistorica(fechaDia)
+                        : null,
                     borderRadius: BorderRadius.circular(20),
                     child: Container(
                       decoration: BoxDecoration(
                         color: seleccionado
                             ? const Color(0xFF3F51B5)
-                            : (hoy ? const Color(0xFFE8EAF6) : Colors.transparent),
+                            : (hoy
+                                  ? const Color(0xFFE8EAF6)
+                                  : Colors.transparent),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       alignment: Alignment.center,
@@ -672,7 +647,9 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                               ? Colors.black26
                               : (seleccionado ? Colors.white : Colors.black87),
                           fontSize: isMobile ? 10.5 : 11.5,
-                          fontWeight: seleccionado ? FontWeight.w800 : FontWeight.w600,
+                          fontWeight: seleccionado
+                              ? FontWeight.w800
+                              : FontWeight.w600,
                         ),
                       ),
                     ),
@@ -744,7 +721,9 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 
     for (final entry in resultadosPorEquipo.entries) {
       final id = entry.key;
-      final limpios = entry.value.puntosLimpios.map((punto) => punto.payload).toList();
+      final limpios = entry.value.puntosLimpios
+          .map((punto) => punto.payload)
+          .toList();
       final pos = limpios.isNotEmpty ? limpios.last : null;
       if (pos == null) {
         continue;
@@ -781,11 +760,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                   ),
                 ),
               ),
-              Icon(
-                iconoEquipo,
-                color: Color(0xFF06329C),
-                size: 26,
-              ),
+              Icon(iconoEquipo, color: Color(0xFF06329C), size: 26),
             ],
           ),
         ),
@@ -801,7 +776,9 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
     final polilineas = <Polyline>[];
 
     for (final entry in resultadosPorEquipo.entries) {
-      final segmentos = _segmentarRutaValida(entry.value.segmentosReconstruidos);
+      final segmentos = _segmentarRutaValida(
+        entry.value.segmentosReconstruidos,
+      );
 
       for (final segmento in segmentos) {
         if (segmento.length < 2) {
@@ -824,16 +801,80 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   List<List<ll.LatLng>> _segmentarRutaValida(
     List<List<PuntoTrayectoria<Map<String, dynamic>>>> segmentos,
   ) {
-    return segmentos
-        .map(
-          (segmento) => segmento
-              .map((punto) => ll.LatLng(punto.latitud, punto.longitud))
-              .toList(),
-        )
-        .toList();
+    final segmentosVisibles = <List<ll.LatLng>>[];
+
+    for (final segmento in segmentos) {
+      if (segmento.length < 2) continue;
+
+      var actual = <ll.LatLng>[
+        ll.LatLng(segmento.first.latitud, segmento.first.longitud),
+      ];
+
+      for (var i = 1; i < segmento.length; i++) {
+        final anterior = segmento[i - 1];
+        final siguiente = segmento[i];
+        final puntoSiguiente = ll.LatLng(siguiente.latitud, siguiente.longitud);
+
+        if (_tramoHistoricoVisible(anterior, siguiente)) {
+          actual.add(puntoSiguiente);
+          continue;
+        }
+
+        if (actual.length >= 2) {
+          segmentosVisibles.add(actual);
+        }
+        actual = [puntoSiguiente];
+      }
+
+      if (actual.length >= 2) {
+        segmentosVisibles.add(actual);
+      }
+    }
+
+    return segmentosVisibles;
   }
 
-  PuntoTrayectoria<Map<String, dynamic>> _mapToPunto(Map<String, dynamic> punto) {
+  bool _tramoHistoricoVisible(
+    PuntoTrayectoria<Map<String, dynamic>> anterior,
+    PuntoTrayectoria<Map<String, dynamic>> siguiente,
+  ) {
+    final deltaSegundos = siguiente.tiempo
+        .difference(anterior.tiempo)
+        .inSeconds;
+    if (deltaSegundos <= 0 ||
+        deltaSegundos > _gapMaximoVisualHistorico.inSeconds) {
+      return false;
+    }
+
+    final distancia = _limpiador.distanciaMetros(
+      anterior.latitud,
+      anterior.longitud,
+      siguiente.latitud,
+      siguiente.longitud,
+    );
+    final velocidad = (distancia / deltaSegundos) * 3.6;
+
+    if (velocidad.isNaN ||
+        velocidad.isInfinite ||
+        velocidad > _velocidadMaximaVisualHistoricoKmh) {
+      return false;
+    }
+
+    if (distancia > _distanciaMaximaTramoHistoricoMetros) {
+      return false;
+    }
+
+    if (deltaSegundos <= _ventanaSaltoVisualHistorico.inSeconds &&
+        distancia > _distanciaSaltoVisualHistoricoMetros) {
+      return false;
+    }
+
+    return true;
+  }
+
+  PuntoTrayectoria<Map<String, dynamic>> _mapToPunto(
+    Map<String, dynamic> punto,
+  ) {
     return PuntoTrayectoria<Map<String, dynamic>>(
       latitud: (punto['lat_grados'] as num).toDouble(),
       longitud: (punto['lon_grados'] as num).toDouble(),
@@ -862,9 +903,11 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
 class _DatosHistoricoVista {
   final Map<String, ModeloEquipo> equiposPorId;
   final Map<String, ResultadoProcesadoOperador> resultadosPorEquipo;
+  final DatosGisOperativos datosGis;
 
   const _DatosHistoricoVista({
     required this.equiposPorId,
     required this.resultadosPorEquipo,
+    required this.datosGis,
   });
 }

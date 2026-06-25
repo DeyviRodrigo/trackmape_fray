@@ -42,23 +42,14 @@ class ConfiguracionMetricasOperador {
   double get radioCargaMetros => radioEntradaCargaMetros;
 
   static const porDefecto = ConfiguracionMetricasOperador(
-    puntosDescarga: [
-      PuntoControlDescarga(latitud: -14.667833, longitud: -69.465853),
-      PuntoControlDescarga(latitud: -14.667749, longitud: -69.466246),
-      PuntoControlDescarga(latitud: -14.668641, longitud: -69.466983),
-      PuntoControlDescarga(latitud: -14.668801, longitud: -69.466919),
-      PuntoControlDescarga(latitud: -14.669245, longitud: -69.466820),
-    ],
-    puntosCarga: [
-      PuntoControlCarga(latitud: -14.673484, longitud: -69.468195),
-      PuntoControlCarga(latitud: -14.673975, longitud: -69.467738),
-    ],
+    puntosDescarga: [],
+    puntosCarga: [],
     frecuenciaBaseSegundos: 5,
     gapMaximoRecuperableSegundos: 20,
-    radioEntradaCargaMetros: 18.0,
-    radioSalidaCargaMetros: 24.0,
-    radioEntradaChuteMetros: 20.0,
-    radioSalidaChuteMetros: 25.0,
+    radioEntradaCargaMetros: 0.0,
+    radioSalidaCargaMetros: 0.0,
+    radioEntradaChuteMetros: 0.0,
+    radioSalidaChuteMetros: 0.0,
     separacionMinimaEventoOperacion: Duration(minutes: 1),
     velocidadDetenidoMaximaKmh: 1.0,
     tiempoDetenidoPermitidoMinimo: Duration(minutes: 5),

@@ -24,7 +24,13 @@ const Color _colorDivider = Color(0xFF2A7AA1);
 
 class PaginaPerfilEquipo extends StatefulWidget {
   final ModeloEquipo equipo;
-  const PaginaPerfilEquipo({super.key, required this.equipo});
+  final String? empresaFiltro;
+
+  const PaginaPerfilEquipo({
+    super.key,
+    required this.equipo,
+    this.empresaFiltro,
+  });
 
   @override
   State<PaginaPerfilEquipo> createState() => _PaginaPerfilEquipoState();
@@ -65,14 +71,19 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           }
 
           if (!snapshot.hasData) {
-            return _buildErrorState('No se pudieron cargar los datos del operador.');
+            return _buildErrorState(
+              'No se pudieron cargar los datos del operador.',
+            );
           }
 
           final resumen = snapshot.data!;
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              final availableWidth = (constraints.maxWidth - 32).clamp(320.0, 420.0);
+              final availableWidth = (constraints.maxWidth - 32).clamp(
+                320.0,
+                420.0,
+              );
               final panelWidth = availableWidth.toDouble();
 
               return SingleChildScrollView(
@@ -86,10 +97,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
                         gradient: const LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0xFF1C1C1E),
-                            Color(0xFF121212),
-                          ],
+                          colors: [Color(0xFF1C1C1E), Color(0xFF121212)],
                         ),
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(color: _colorPrimary, width: 2),
@@ -129,17 +137,31 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   }
 
   Future<_ResumenPerfilEquipo> _cargarResumenPerfil() async {
-    final trayectoriasDia = (await _repositorio.obtenerTrayectoriaPorFecha(_fechaConsulta))
-        .where((punto) => punto['fk_emisor']?.toString() == widget.equipo.id)
-        .toList()
-      ..sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
+    final empresaFiltro = widget.empresaFiltro ?? widget.equipo.fkEmpresa;
+    final trayectoriasDia =
+        (await _repositorio.obtenerTrayectoriaPorFecha(
+              _fechaConsulta,
+              tipoEquipoControl:
+                  RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
+              fkEmpresa: empresaFiltro,
+              fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
+            ))
+            .where(
+              (punto) => punto['fk_emisor']?.toString() == widget.equipo.id,
+            )
+            .toList()
+          ..sort(
+            (a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()),
+          );
 
     final conexiones = <Map<String, dynamic>>[];
     if (_esMismoDia(_fechaConsulta, DateTime.now())) {
       conexiones.addAll(
-        (await _repositorio.obtenerUltimasPosiciones()).where(
-          (punto) => punto['fk_emisor']?.toString() == widget.equipo.id,
-        ),
+        (await _repositorio.obtenerUltimasPosiciones(
+          tipoEquipoControl: RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
+          fkEmpresa: empresaFiltro,
+          fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
+        )).where((punto) => punto['fk_emisor']?.toString() == widget.equipo.id),
       );
       conexiones.sort(
         (a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()),
@@ -156,7 +178,9 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
         puntos.add(conexion);
       }
     }
-    puntos.sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
+    puntos.sort(
+      (a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()),
+    );
 
     final resultado = _servicioMetricas.procesarDatosUnidad(
       equipo: widget.equipo,
@@ -165,14 +189,15 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     final ultimo = resultado.puntosLimpios.isNotEmpty
         ? resultado.puntosLimpios.last.payload
         : (resultado.puntosNormalizados.isNotEmpty
-            ? resultado.puntosNormalizados.last.payload
-            : null);
+              ? resultado.puntosNormalizados.last.payload
+              : null);
     final ultimoTiempo = ultimo == null
         ? null
         : DateTime.tryParse(ultimo['tiempo']?.toString() ?? '');
 
     final ahora = DateTime.now();
-    final activo = ultimoTiempo != null &&
+    final activo =
+        ultimoTiempo != null &&
         ahora.difference(ultimoTiempo).inSeconds.abs() <= 60;
 
     final conectadoDesde = activo && resultado.puntosLimpios.isNotEmpty
@@ -260,6 +285,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
         builder: (_) => PaginaStream(
           equipoIdFiltro: widget.equipo.id,
           nombreEquipoFiltro: widget.equipo.nombreMostrar,
+          empresaFiltro: widget.empresaFiltro ?? widget.equipo.fkEmpresa,
         ),
       ),
     );
@@ -273,6 +299,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           equipoIdFiltro: widget.equipo.id,
           nombreEquipoFiltro: widget.equipo.nombreMostrar,
           fechaInicial: _fechaConsulta,
+          empresaFiltro: widget.empresaFiltro ?? widget.equipo.fkEmpresa,
         ),
       ),
     );
@@ -364,8 +391,9 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   }
 
   Widget _buildHero(_ResumenPerfilEquipo resumen, {bool isMobile = false}) {
-    final colorEstado =
-        resumen.estado == 'ACTIVO' ? Colors.greenAccent : Colors.redAccent;
+    final colorEstado = resumen.estado == 'ACTIVO'
+        ? Colors.greenAccent
+        : Colors.redAccent;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -407,8 +435,10 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: colorEstado.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(16),
@@ -486,7 +516,8 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
               Expanded(
                 child: _buildHighlightedMetric(
                   title: 'Velocidad',
-                  value: '${resumen.velocidadActualKmh.toStringAsFixed(1)} km/h',
+                  value:
+                      '${resumen.velocidadActualKmh.toStringAsFixed(1)} km/h',
                   accent: _colorPrimarySoft,
                   height: 176,
                 ),
@@ -578,7 +609,9 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
                     Expanded(
                       child: _buildStackLineBlock(
                         title: 'Pago de ineficiencia',
-                        value: _formatearMontoDashboard(resumen.pagoIneficiencia),
+                        value: _formatearMontoDashboard(
+                          resumen.pagoIneficiencia,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -706,10 +739,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            background.withOpacity(0.38),
-            background.withOpacity(0.24),
-          ],
+          colors: [background.withOpacity(0.38), background.withOpacity(0.24)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -734,13 +764,13 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
             child: Text(
               value,
               textAlign: TextAlign.center,
-                maxLines: 2,
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                ),
+              maxLines: 2,
+              style: TextStyle(
+                color: accent,
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
               ),
+            ),
           ),
         ],
       ),
@@ -867,10 +897,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   }
 
   Widget _buildHorizontalDivider() {
-    return Container(
-      height: 2,
-      color: _colorPrimary.withOpacity(0.92),
-    );
+    return Container(height: 2, color: _colorPrimary.withOpacity(0.92));
   }
 
   Widget _buildHighlightedMetric({
@@ -886,10 +913,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF221E18),
-            Color(0xFF141414),
-          ],
+          colors: [Color(0xFF221E18), Color(0xFF141414)],
         ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: _colorPrimarySoft.withOpacity(0.9), width: 2),
@@ -1035,10 +1059,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     );
   }
 
-  Widget _buildMetricLineBlock({
-    required String title,
-    required String value,
-  }) {
+  Widget _buildMetricLineBlock({required String title, required String value}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.transparent,
@@ -1115,10 +1136,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     );
   }
 
-  Widget _buildStackLineBlock({
-    required String title,
-    required String value,
-  }) {
+  Widget _buildStackLineBlock({required String title, required String value}) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -1175,10 +1193,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
     );
   }
 
-  Widget _buildMealPair({
-    required String almuerzo,
-    required String desayuno,
-  }) {
+  Widget _buildMealPair({required String almuerzo, required String desayuno}) {
     return Column(
       children: [
         Text(
@@ -1305,10 +1320,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
           ],
-          if (footer != null) ...[
-            const SizedBox(height: 14),
-            footer,
-          ],
+          if (footer != null) ...[const SizedBox(height: 14), footer],
         ],
       ),
     );
@@ -1371,8 +1383,10 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
                     borderRadius: BorderRadius.circular(18),
                     child: FlutterMap(
                       options: MapOptions(
-                        initialCenter:
-                            ll.LatLng(resumen.latitud!, resumen.longitud!),
+                        initialCenter: ll.LatLng(
+                          resumen.latitud!,
+                          resumen.longitud!,
+                        ),
                         initialZoom: 16,
                       ),
                       children: [
@@ -1441,10 +1455,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
         children: [
           SizedBox(
             width: 48,
-            child: Text(
-              label,
-              style: const TextStyle(color: Colors.white54),
-            ),
+            child: Text(label, style: const TextStyle(color: Colors.white54)),
           ),
           Expanded(
             child: Text(
@@ -1469,17 +1480,14 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   }) {
     return SizedBox(
       height: 56,
-        child: ElevatedButton.icon(
-          onPressed: onPressed,
-          icon: Icon(icon),
-          label: Text(label),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(label),
         style: ElevatedButton.styleFrom(
           backgroundColor: _colorPrimary,
           foregroundColor: const Color(0xFF121212),
-          textStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
           ),
@@ -1605,4 +1613,3 @@ class _ResumenPerfilEquipo {
   final int ciclosRecuperadosPorInterpolacion;
   final bool tieneMuestraSuficiente;
 }
-

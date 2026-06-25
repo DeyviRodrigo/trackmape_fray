@@ -34,6 +34,262 @@ Desde esta conversacion:
 
 ## Bitacora de sesiones
 
+### 2026-06-06
+
+#### Objetivo trabajado
+
+Crear una hoja admin para dibujar y administrar configuracion operativa sin usar geojson.io ni pegar JSON manualmente.
+
+#### Cambios realizados
+
+1. El modulo GIS de Flutter se adapto al modelo de prueba de dos tablas:
+   - `pr_geometrias_operativas`
+   - `pr_elementos_operativos`
+2. `Stream` e `Historico` siguen usando las mismas capas visuales, pero ahora las leen desde las tablas `pr_`.
+3. Se agrego la pagina admin `Configuracion Operativa`.
+4. La nueva pagina permite seleccionar empresa, sede opcional, categoria (`area`, `ruta`, `punto`), tipo operativo, nombre, descripcion, color, prioridad y estado activo.
+5. El mapa permite dibujar por toques:
+   - `area` genera `Polygon`.
+   - `ruta` genera `LineString`.
+   - `punto` genera `Point`.
+6. Se agregaron acciones para crear, listar, activar/desactivar y eliminar elementos de prueba.
+7. Se agrego la hoja al menu lateral admin sin agregarla a la barra inferior.
+
+#### Archivos creados
+
+- `database/pr_configuracion_operativa_supabase.sql`
+- `lib/funciones/gis/presentacion/paginas/pagina_configuracion_operativa.dart`
+
+#### Archivos modificados
+
+- `lib/funciones/gis/datos/modelos/modelo_gis.dart`
+- `lib/funciones/gis/datos/repositorios/repositorio_gis.dart`
+- `lib/funciones/gis/presentacion/widgets/capas_gis_mapa.dart`
+- `lib/funciones/navegacion/presentacion/contenedor_principal.dart`
+- `README.md`
+
+#### Pendientes
+
+- Probar guardado real contra Supabase con permisos/RLS de las tablas `pr_`.
+- Validar visualmente que las areas/rutas creadas aparezcan en `Stream` e `Historico`.
+- La edicion fina de vertices queda para una fase posterior.
+
+#### Ajuste posterior
+
+Se retiraron las coordenadas operativas quemadas en codigo para `Carga` y `Chute`:
+
+1. `Stream` ya no dibuja circulos ni etiquetas fijas de carga/chute desde codigo.
+2. `Historico` ya no dibuja esas geocercas fijas.
+3. `ConfiguracionMetricasOperador.porDefecto` quedo sin puntos de carga/descarga y con radios operativos en `0.0`.
+4. Las areas/rutas/puntos operativos deben crearse manualmente desde la hoja `Configuracion Operativa` y cargarse desde Supabase.
+
+#### Importacion KML
+
+Se agrego importacion KML al dashboard `Configuracion Operativa`:
+
+1. Se agregaron dependencias directas `file_picker` y `xml`.
+2. Se creo un importador KML que lee `Placemark` y convierte `Point`, `LineString`, `Polygon` y `MultiGeometry` a GeoJSON.
+3. La hoja permite seleccionar archivo `.kml` o pegar texto KML manualmente.
+4. Antes de guardar se muestra una vista previa con nombre, categoria detectada, tipo operativo, color, prioridad, activo y seleccion individual.
+5. El guardado reutiliza las tablas `pr_geometrias_operativas` y `pr_elementos_operativos`; no se agregaron tablas nuevas.
+6. En v1 no se soporta `.kmz`; solo `.kml`.
+
+### 2026-06-04
+
+#### Objetivo trabajado
+
+Implementar GIS v1 liviano para mostrar areas operativas y rutas configurables sin activar ciclos automaticos.
+
+#### Cambios realizados
+
+1. Se creo el script manual `database/gis_v1_supabase.sql` para Supabase SQL Editor.
+2. El script define `tipos_area`, `areas_operativas` y `rutas_operativas` con GeoJSON en `jsonb`.
+3. Se agregaron tipos base: Corte, Carga, Descarga, Chute, Desmonte y Estacionamiento.
+4. Se agrego un modulo Flutter `gis` con modelos, repositorio Supabase y constructor de capas para `flutter_map`.
+5. `Stream` ahora puede pintar poligonos y rutas por empresa sin alterar el tracking GPS.
+6. `Historico` ahora puede pintar las mismas capas GIS junto con las rutas historicas.
+7. Se agregaron toggles visuales `Areas` y `Rutas` en Stream e Historico.
+8. Si las tablas GIS aun no existen o estan vacias, el repositorio devuelve capas vacias y no rompe el mapa.
+
+#### Archivos creados
+
+- `database/gis_v1_supabase.sql`
+- `lib/funciones/gis/datos/modelos/modelo_gis.dart`
+- `lib/funciones/gis/datos/repositorios/repositorio_gis.dart`
+- `lib/funciones/gis/presentacion/widgets/capas_gis_mapa.dart`
+
+#### Archivos modificados
+
+- `lib/funciones/monitoreo/presentacion/paginas/pagina_stream.dart`
+- `lib/funciones/monitoreo/presentacion/paginas/pagina_historico.dart`
+- `README.md`
+
+#### Verificaciones y resultados
+
+- `git diff --check` no reporto errores.
+- `dart format` quedo en timeout.
+- `flutter analyze` quedo en timeout.
+- El script SQL no se ejecuto desde Codex; debe pegarse manualmente en Supabase SQL Editor.
+
+#### Pendientes
+
+- Ejecutar `database/gis_v1_supabase.sql` en Supabase.
+- Insertar GeoJSON reales por empresa.
+- Probar visualmente `Stream` e `Historico` con areas y rutas activas.
+- Dejar eventos de entrada/salida y ciclos para GIS v2.
+
+### 2026-05-23
+
+#### Objetivo trabajado
+
+Revisar por que la hoja `Stream` mostraba equipos, pero no pintaba marcadores GPS en vivo como una version anterior.
+
+#### Cambios realizados
+
+1. Se identifico que `Stream` si estaba cargando equipos filtrados, pero las posiciones dependian estrictamente de `fk_receptor`.
+2. Se revisaron los CSV `empresas_rows.csv` y `equipos_control_rows.csv`; se encontro que Francisco 1 y Francisco 2 tienen receptores LoRA distintos.
+3. Se agrego seleccion de receptor por empresa:
+   - Francisco 1 usa `cb988466-ef79-401a-b4e9-6889f18d5466` (`HELTEC001`).
+   - Francisco 2 usa `a07bb038-dcb9-466e-98c2-b0558a4363ea` (`HELTEC002`).
+4. Se agrego un fallback para `posiciones_temp`: primero consulta con el receptor de la empresa seleccionada y, si no obtiene coordenadas operativas normalizadas para los equipos filtrados, vuelve a consultar sin ese filtro.
+5. El fallback mantiene la validacion por empresa, tipo de equipo y match contra `equipos_control`, para evitar mostrar unidades fuera del filtro seleccionado.
+6. El diagnostico de Stream usa la misma consulta con fallback para reflejar mejor si hay dato, match o coordenada invalida.
+
+#### Archivos modificados en esta conversacion
+
+- `lib/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart`
+  - Se agrego `_obtenerPosicionesTempNormalizadas` para centralizar la consulta con fallback.
+  - Se agrego `_consultarPosicionesTempRecientes` para consultar `posiciones_temp` con o sin receptor.
+  - Se agrego validacion de coordenada operativa antes de decidir si se usa el fallback.
+
+- `README.md`
+  - Se registro esta revision y el ajuste aplicado.
+
+#### Verificaciones y resultados
+
+- Se reviso por codigo que las tarjetas de Stream provienen de `equipos_control`, mientras que los marcadores dependen de posiciones normalizadas desde `posiciones_temp`.
+- `dart format` y `dart analyze` no terminaron dentro del tiempo del entorno; quedaron en timeout.
+
+#### Errores o conflictos encontrados
+
+- La consulta externa directa a Supabase desde PowerShell fue inestable en este entorno, aunque confirmo que el problema estaba en la etapa de filtrado/normalizacion de posiciones y no en la carga visual de equipos.
+
+#### Ajuste temporal para APP de cliente
+
+Se dejo la aplicacion en modo cliente simple para una entrega visual reducida:
+
+1. La empresa por defecto ahora es Francisco 1 (`c6a59aec-29ea-4e42-8ece-581df5e4459d`).
+2. La lista visible de empresas deja comentada a Francisco 2, sin eliminar sus constantes ni su receptor.
+3. En `ContenedorPrincipal` se agrego `_modoClienteSimple = true`.
+4. Con ese modo activo solo aparecen estas tres hojas:
+   - Monitoreo en Tiempo Real
+   - Consulta Historica
+   - Base de Operadores
+5. Las paginas Ranking, Simulacion, Rendimiento y Comparativo siguen importadas y disponibles en codigo, pero ocultas de la navegacion.
+6. El selector de empresa se reemplazo visualmente por una etiqueta fija `Francisco 1`.
+
+Para revertir este modo, cambiar `_modoClienteSimple` a `false` y volver a habilitar Francisco 2 en `empresasDashboardFrancisco`.
+
+#### Ajuste de cola visual en Stream
+
+Se corrigio el rastro naranja del monitoreo en vivo para que no pinte el recorrido acumulado del dia:
+
+1. El rastro de cada unidad ahora guarda puntos con hora de lectura, no solo coordenadas.
+2. La polilinea naranja se recorta contra una ventana movil de 40 segundos.
+3. Si una unidad deja de enviar datos, el rastro se limpia en los refrescos de UI aunque no llegue una nueva posicion.
+4. Se dejo un limite maximo de 9 puntos por unidad para representar hasta 8 tramos de 5 segundos.
+5. La linea se hizo mas delgada y menos opaca para que funcione como cola reciente y no como ruta historica.
+6. La cola ahora se dibuja como tramos independientes entre lecturas consecutivas; si hay un salto mayor a 8 segundos o un salto GPS demasiado largo, ese tramo no se pinta para evitar una linea recta atravesando el mapa.
+
+Archivo modificado:
+
+- `lib/funciones/monitoreo/presentacion/paginas/pagina_stream.dart`
+
+Verificacion:
+
+- `git diff --check` no reporto errores de espacios.
+- `dart format`, `dart analyze` y `dart --version` quedaron en timeout en este entorno.
+
+#### Cambio temporal de cliente a Francisco 2
+
+Se preparo la misma version simple de cliente para la segunda empresa:
+
+1. La empresa por defecto ahora es `EMPRESA MINERA AMS-6 SOCIEDAD ANONIMA` (`63a9ae71-8881-4333-8927-41c48b35d104`).
+2. Francisco 1 quedo comentado en la lista visible, sin borrar sus constantes ni receptor.
+3. El modo cliente simple sigue activo con solo tres hojas:
+   - Monitoreo en Tiempo Real
+   - Consulta Historica
+   - Base de Operadores
+4. El titulo de la cabecera ahora muestra el nombre legal de la empresa debajo del nombre de la hoja, para diferenciar la APP de cliente.
+5. El receptor usado por Stream/Historico/Operadores pasa automaticamente a `a07bb038-dcb9-466e-98c2-b0558a4363ea` por el mapeo de Francisco 2.
+
+Para volver a Francisco 1, cambiar `empresaMonitoreoFija` a `empresaFrancisco1` y volver a dejar Francisco 1 activo en `empresasDashboardFrancisco`.
+
+#### Reactivacion de modo admin
+
+Se devolvio la aplicacion a modo administrador para revisar ambas empresas:
+
+1. `_modoClienteSimple` quedo en `false`.
+2. El selector superior de empresa vuelve a estar visible.
+3. `empresasDashboardFrancisco` vuelve a incluir:
+   - Francisco 1.
+   - `EMPRESA MINERA AMS-6 SOCIEDAD ANONIMA`.
+4. La empresa inicial vuelve a ser Francisco 1, pero el selector permite cambiar a AMS-6.
+5. Se reactivan las paginas ocultas en modo cliente: Ranking Operativo, Transcurso Simulado, Rendimiento de Operador y Comparativo de Rutas.
+6. El selector se ajusto con ancho fijo y texto recortado para que el nombre largo de AMS-6 no rompa la cabecera.
+
+### 2026-04-24
+
+#### Objetivo trabajado
+
+Restringir el monitoreo a una empresa y sede fijas para los trackers, y separar claramente la fuente en vivo de la fuente historica.
+
+#### Cambios realizados
+
+1. Se agrego soporte de filtro opcional por `fk_empresa`, `fk_sede` y `tipo_equipo_control` en el repositorio de monitoreo.
+2. La vista `Base de Operadores` ahora solo consume trackers `SEEED WIO TRACKER L1` de:
+   - empresa `c6a59aec-29ea-4e42-8ece-581df5e4459d`
+   - sede `3821dbd6-5c29-49ca-b6b0-8c4201d55ffe`
+3. La vista `Stream` ahora usa ese mismo filtro fijo para cargar equipos y validar posiciones en vivo provenientes de `posiciones_temp`.
+4. La vista `Historico / Datos anteriores` dejo de depender de `posiciones_temp` y ahora consulta `posiciones`.
+5. `Historico` ya no mezcla datos en vivo del dia actual; el seguimiento del dia de hoy queda en `Stream`.
+6. Los equipos de otros tipos dentro de la misma sede, como `ESP_LORA`, `NFC`, `Biometrico` o `Vision Computacional`, quedan fuera de `Operadores`, `Stream` e `Historico` por el filtro de tipo.
+
+#### Archivos modificados en esta conversacion
+
+- `lib/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart`
+  - Se agregaron filtros opcionales por empresa, sede y tipo de equipo.
+  - `obtenerTrayectoriaPorFecha` ahora usa `posiciones` como fuente historica.
+  - Se separo la normalizacion de datos en vivo (`posiciones_temp`) y datos historicos (`posiciones`).
+
+- `lib/funciones/monitoreo/presentacion/paginas/pagina_operadores.dart`
+  - Se fijo el consumo de operadores y ultimas conexiones al filtro de empresa, sede y tipo tracker.
+
+- `lib/funciones/monitoreo/presentacion/paginas/pagina_stream.dart`
+  - Se fijo el filtro de empresa, sede y tipo tracker para stream en vivo, equipos iniciales y ultimas posiciones.
+
+- `lib/funciones/monitoreo/presentacion/paginas/pagina_historico.dart`
+  - Se fijo el filtro de empresa, sede y tipo tracker para historico.
+  - Se elimino la mezcla con conexiones recientes del dia actual.
+
+#### Archivos eliminados en esta conversacion
+
+- Ninguno.
+
+#### Verificaciones y resultados
+
+- Se verifico por busqueda que `pagina_operadores`, `pagina_stream` y `pagina_historico` ya consumen el filtro fijo requerido.
+- Se verifico por lectura que `obtenerTrayectoriaPorFecha` ya no consulta `posiciones_temp`.
+
+#### Errores o conflictos encontrados
+
+- No se ejecuto `dart analyze` aun en esta conversacion al momento de registrar esta entrada.
+
+#### Pendientes detectados
+
+- Validar en entorno real que `posiciones.fk_emisor` llegue como `id_equipo_control` para todas las filas historicas esperadas.
+- Revisar si otras vistas como `ranking`, `mapa` o `simulacion` tambien deben heredar el mismo filtro organizacional en una siguiente pasada.
+
 ### 2026-04-08
 
 #### Objetivo trabajado
