@@ -309,7 +309,7 @@ Validacion realizada:
 
 Fallos de pruebas observados:
 
-- `test/widget_test.dart` no tiene `main`.
+- `test/widget_test.dart` no tenia `main`. Corregido en v2 con una prueba minima de tokens.
 - `test/servicio_metricas_operador_test.dart` espera conteos `1` y `3`, pero obtiene `0`.
 
 ## 6. Plan recomendado de migracion
@@ -352,3 +352,113 @@ Fallos de pruebas observados:
 La adaptacion inicial queda lista para que nuevos desarrollos usen la arquitectura de `arquitectura_modelo` sin romper la app actual. Todavia no conviene borrar ni reemplazar `lib/funciones` porque contiene flujos productivos de conductor, monitoreo, GIS y estadistica.
 
 El siguiente paso de mayor impacto es migrar acceso a datos en conductor/monitoreo hacia `OperacionConexion` y luego llevar empresas/personal a paginas, controladores y componentes completos del modelo.
+
+## 8. Revision de `origin/main` e integracion v2
+
+### 8.1 Estado de la rama online
+
+La rama online `origin/main` no compartia base comun con `main` local. Por eso el `git push` normal era rechazado como `non-fast-forward`: el remoto tenia commits propios y el local tenia una linea de trabajo distinta con la adaptacion de arquitectura.
+
+Commits relevantes detectados en `origin/main`:
+
+- `d969570` - Primer subida del proyecto Flutter.
+- `7057fea` - Datos obtenidos en campo, mejoras en hojas y funciones.
+- `3f514fb` - Primer commit Deyvi.
+- `fc63662` - Resolve merge conflicts keeping local files.
+
+Contenido principal de `origin/main`:
+
+- Estructura base Flutter multiplataforma: `android`, `ios`, `linux`, `macos`, `web`, `windows`.
+- `lib/core/utilidades/calculadora_geodesica.dart`.
+- Paginas legacy de estadistica: `pagina_informe.dart`, `pagina_metricas.dart`.
+- Modelos/repositorio legacy de monitoreo: `modelo_equipo.dart`, `modelo_posicion.dart`, `repositorio_monitoreo.dart`.
+- Paginas legacy de monitoreo: `pagina_historico.dart`, `pagina_mapa.dart`, `pagina_operadores.dart`, `pagina_simulacion.dart`, `pagina_stream.dart`, `perfil_equipo.dart`.
+- Navegacion legacy: `lib/funciones/navegacion/presentacion/contenedor_principal.dart`.
+- Arranque legacy: `lib/main.dart`.
+- `pubspec.yaml`, `pubspec.lock` y `test/widget_test.dart`.
+
+Ausencias importantes frente a la version local adaptada:
+
+- No contiene `lib/app/conexion_backend`.
+- No contiene `lib/app/tokens`.
+- No contiene `lib/widgets` por atomos, moleculas y organismos.
+- No contiene `lib/datos` con tablas, vistas, RPC e interfaces.
+- No contiene `lib/modulos` con conexiones por dominio.
+- No contiene los modulos locales recientes de conductor, GIS, diagnostico, validacion y rendimiento operativo.
+- No contiene el informe de arquitectura ni los SQL locales agregados.
+
+### 8.2 Cambios online revisados y decision
+
+`origin/main` agrega una pagina `lib/funciones/monitoreo/presentacion/paginas/pagina_conductor.dart`.
+
+Decision: no se adopta en esa ubicacion.
+
+Motivos:
+
+- Mezcla vista, Supabase, GPS e identificador de dispositivo en un solo widget.
+- Registra y consulta tablas directamente desde la UI.
+- Duplica una funcionalidad que ya existe localmente en `lib/funciones/conductor/`.
+- La version local de conductor ya separa responsabilidades en:
+  - `datos/repositorio_conductor.dart`.
+  - `servicios/gps_servicio.dart`.
+  - `servicios/identificador_dispositivo.dart`.
+  - `presentacion/formulario_registro_dispositivo.dart`.
+  - `presentacion/pagina_conductor.dart`.
+
+`origin/main` tambien incluye un `test/widget_test.dart` del contador inicial de Flutter.
+
+Decision: no se adopta.
+
+Motivo:
+
+- Ese test espera `MyApp`, texto `0`, texto `1` y boton `+`, pero la app real usa `AplicacionTrackMAPE` y no es una app contador.
+
+`origin/main` incluye un `main.dart` legacy con configuracion directa de Supabase y tema oscuro manual.
+
+Decision: se conserva el `main.dart` local.
+
+Motivos:
+
+- El local carga `SUPABASE_URL` y `SUPABASE_ANON_KEY` desde `.env`.
+- El local usa `publishableKey`.
+- El local aplica `TemaBase.oscuro()` desde tokens del sistema.
+- Evita volver a una configuracion hardcodeada y menos reutilizable.
+
+### 8.3 Forma de integracion
+
+Se preparo un merge de historiales conservando el arbol local adaptado como version final. Esta decision evita:
+
+- Hacer force push.
+- Perder la arquitectura nueva.
+- Reintroducir vistas legacy por encima de widgets/tokens.
+- Duplicar el flujo conductor dentro de `monitoreo`.
+
+La version final mantiene:
+
+- Menu con cinco secciones: Encabezado, Formularios, Informes, Configuraciones y Sesion.
+- Filtros globales fuera del encabezado.
+- Tokens visuales reutilizables desde `lib/app/tokens`.
+- Widgets reciclables desde `lib/widgets`.
+- Capas de datos en `lib/datos`, basadas en `arquitectura_modelo/lib/datos/postgresql/tablas.sql`.
+- Conexiones de modulo en `lib/modulos`.
+
+### 8.4 Adaptaciones pendientes despues de v2
+
+- Crear un test de humo real para `AplicacionTrackMAPE` o dejar `widget_test.dart` desactivado hasta tener inicializacion de Supabase mockeable.
+- Migrar `lib/funciones/conductor/datos/repositorio_conductor.dart` hacia `OperacionConexion`.
+- Migrar `lib/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart` hacia la capa `datos` y conexiones de modulo.
+- Completar componentes reutilizables para formularios y filtros especificos.
+- Definir formalmente si `arquitectura_modelo` quedara como submodulo de referencia o como carpeta externa no versionada.
+
+### 8.5 Validacion de la version v2
+
+Validaciones ejecutadas despues de integrar `origin/main`:
+
+- `dart analyze lib\app\tokens lib\widgets lib\main.dart lib\funciones\navegacion\presentacion\contenedor_principal.dart test\widget_test.dart`: sin issues.
+- `flutter analyze --no-pub`: termina con 160 avisos/infos legacy; no aparecieron errores de compilacion por la integracion de arquitectura.
+- `flutter build web --no-pub`: correcto, genero `build\web`.
+- `flutter test --no-pub`: el runner compila y el test de tokens pasa, pero siguen fallando dos pruebas de `test/servicio_metricas_operador_test.dart` porque el servicio devuelve conteos `0` donde los tests esperan `1` y `3`.
+
+Cambio adicional aplicado por validacion:
+
+- `test/widget_test.dart` dejo de estar vacio y ahora valida que `TemaBase.oscuro()` expone un tema oscuro reutilizable con `ColoresApp.fondoSecundario`.

@@ -34,6 +34,53 @@ Desde esta conversacion:
 
 ## Bitacora de sesiones
 
+### 2026-06-28
+
+#### Objetivo trabajado
+
+Revisar la rama online `origin/main`, integrarla con la version local y dejar la app adaptada al formato de `arquitectura_modelo` sin perder funcionalidad.
+
+#### Cambios realizados
+
+1. Se confirmo que `main` local y `origin/main` tenian historiales sin base comun; por eso el `git push` era rechazado como `non-fast-forward`.
+2. Se reviso el contenido de `origin/main`: base Flutter, paginas legacy de monitoreo/estadistica, `main.dart`, `pubspec`, `widget_test` y una pagina nueva `lib/funciones/monitoreo/presentacion/paginas/pagina_conductor.dart`.
+3. Se preparo un merge de historiales conservando el arbol local como version final, porque la rama local ya contiene la arquitectura nueva de `app`, `datos`, `modulos`, `widgets`, tokens y navegacion principal.
+4. No se adopto la pagina de conductor remota dentro de `monitoreo`, porque implementa Supabase, GPS e identificador de dispositivo directamente en la vista. El proyecto local ya tiene ese flujo mejor separado en `lib/funciones/conductor/` con repositorio, servicios e identificador.
+5. No se adopto el `widget_test.dart` remoto, porque corresponde al contador inicial de Flutter y no aplica a `AplicacionTrackMAPE`.
+6. Se mantiene `main.dart` local con `.env`, `publishableKey` y `TemaBase.oscuro()`, evitando volver a credenciales hardcodeadas y tema legacy.
+7. La navegacion principal mantiene el menu forzado a cinco secciones del modelo:
+   - Encabezado.
+   - Formularios.
+   - Informes.
+   - Configuraciones.
+   - Sesion.
+8. Los filtros globales se mantienen fuera del encabezado, dentro del contenido superior reusable.
+
+#### Archivos modificados
+
+- `README.md`
+- `informe_adaptacion_arquitectura.md`
+- `test/widget_test.dart`
+
+#### Errores o conflictos encontrados
+
+- El rechazo de `git push` se debia a que `origin/main` tenia commits que no estaban en la rama local y ademas no habia base comun entre historiales.
+- El merge se resolvio conservando la version local adaptada a arquitectura, sin forzar push ni sobrescribir la rama remota.
+- `arquitectura_modelo` aparece como subrepositorio con cambios internos no relacionados; no se incluye en esta version.
+- `flutter analyze --no-pub` reporta 160 avisos/infos legacy, sin errores de compilacion de la integracion.
+- `flutter test --no-pub` ya no falla por `test/widget_test.dart`; queda fallando `test/servicio_metricas_operador_test.dart` porque espera conteos `1` y `3`, pero el servicio devuelve `0`.
+
+#### Verificaciones realizadas
+
+- `dart analyze lib\app\tokens lib\widgets lib\main.dart lib\funciones\navegacion\presentacion\contenedor_principal.dart test\widget_test.dart`: sin issues.
+- `flutter build web --no-pub`: correcto.
+- `flutter test --no-pub`: falla solo por los asserts pendientes de metricas de operador.
+
+#### Pendientes
+
+- Reparar las pruebas legacy antes de usar `flutter test` como bloqueo obligatorio.
+- Continuar migrando pantallas legacy para que consuman tokens, widgets y conexiones de modulo en vez de colores o Supabase directo.
+
 ### 2026-06-06
 
 #### Objetivo trabajado
