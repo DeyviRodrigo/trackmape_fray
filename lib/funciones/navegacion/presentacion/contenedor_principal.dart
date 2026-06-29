@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:trackmape_sup/app/tokens/tokens_sistema.dart';
 import 'package:trackmape_sup/funciones/diagnostico/presentacion/paginas/pagina_diagnostico_operativo.dart';
 import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/comparativo_rutas_page.dart';
+import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/pagina_informe.dart';
+import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/rendimiento_operador.dart';
 import 'package:trackmape_sup/funciones/gis/presentacion/paginas/pagina_configuracion_operativa.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_historico.dart';
@@ -9,6 +12,16 @@ import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_ra
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_simulacion.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_stream.dart';
 import 'package:trackmape_sup/funciones/validacion/presentacion/paginas/validacion_equipos_page.dart';
+import 'package:trackmape_sup/widgets/atomos/nivel1/icono_atomo.dart';
+import 'package:trackmape_sup/widgets/atomos/nivel1/texto_atomo.dart';
+import 'package:trackmape_sup/widgets/atomos/nivel2/item_menu_atomo.dart';
+import 'package:trackmape_sup/widgets/moleculas/contenido/opciones_superiores_mol.dart';
+import 'package:trackmape_sup/widgets/moleculas/menu_lateral/seccion_expandible_mol.dart';
+import 'package:trackmape_sup/widgets/moleculas/menu_lateral/seccion_superior_mol.dart';
+import 'package:trackmape_sup/widgets/moleculas/menu_lateral/seccion_usuario_mol.dart';
+import 'package:trackmape_sup/widgets/organismos/contenido/contenido_org.dart';
+import 'package:trackmape_sup/widgets/organismos/encabezado/encabezado_org.dart';
+import 'package:trackmape_sup/widgets/organismos/menu_lateral/menu_lateral_org.dart';
 
 class ContenedorPrincipal extends StatefulWidget {
   const ContenedorPrincipal({super.key});
@@ -18,7 +31,7 @@ class ContenedorPrincipal extends StatefulWidget {
 }
 
 class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
-  static final bool _modoClienteSimple = false;
+  static const bool _modoClienteSimple = false;
   final RepositorioMonitoreo _repositorioMonitoreo = RepositorioMonitoreo();
 
   int _indiceActual = 0;
@@ -48,146 +61,142 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
     });
   }
 
-  List<Widget> get _paginas {
-    final paginasCliente = [
-      PaginaStream(
-        key: ValueKey('stream_$_empresaSeleccionada'),
-        empresaFiltro: _empresaSeleccionada,
+  List<_DestinoNavegacion> get _destinos {
+    final destinosCliente = [
+      _DestinoNavegacion(
+        etiqueta: 'Monitoreo en Tiempo Real',
+        titulo: 'TRACKING EN VIVO',
+        icono: Iconos.monitoreo,
+        seccion: _SeccionMenu.formularios,
+        pagina: PaginaStream(
+          key: ValueKey('stream_$_empresaSeleccionada'),
+          empresaFiltro: _empresaSeleccionada,
+        ),
       ),
-      PaginaHistorico(
-        key: ValueKey('historico_$_empresaSeleccionada'),
-        empresaFiltro: _empresaSeleccionada,
+      _DestinoNavegacion(
+        etiqueta: 'Consulta Historica',
+        titulo: 'HISTORIAL DE RUTAS',
+        icono: Iconos.historico,
+        seccion: _SeccionMenu.informes,
+        pagina: PaginaHistorico(
+          key: ValueKey('historico_$_empresaSeleccionada'),
+          empresaFiltro: _empresaSeleccionada,
+        ),
       ),
-      PaginaOperadores(
-        key: ValueKey('operadores_$_empresaSeleccionada'),
-        empresaFiltro: _empresaSeleccionada,
+      _DestinoNavegacion(
+        etiqueta: 'Base de Operadores',
+        titulo: 'GESTION DE OPERADORES',
+        icono: Iconos.operadores,
+        seccion: _SeccionMenu.formularios,
+        pagina: PaginaOperadores(
+          key: ValueKey('operadores_$_empresaSeleccionada'),
+          empresaFiltro: _empresaSeleccionada,
+        ),
       ),
     ];
 
-    if (_modoClienteSimple) return paginasCliente;
+    if (_modoClienteSimple) return destinosCliente;
 
     return [
-      ...paginasCliente,
-      const PaginaRanking(),
-      const HojaSimulacion(),
-      const ValidacionEquiposPage(),
-      const ComparativoRutasPage(),
-      PaginaConfiguracionOperativa(
-        key: ValueKey('config_operativa_$_empresaSeleccionada'),
-        empresaInicial: _empresaSeleccionada,
+      ...destinosCliente,
+      const _DestinoNavegacion(
+        etiqueta: 'Reporte de Turno',
+        titulo: 'REGISTRO DE INFORME',
+        icono: Iconos.reporte,
+        seccion: _SeccionMenu.formularios,
+        pagina: PaginaInforme(),
       ),
-      PaginaDiagnosticoOperativo(
-        key: ValueKey('diagnostico_operativo_$_empresaSeleccionada'),
-        empresaInicial: _empresaSeleccionada,
+      const _DestinoNavegacion(
+        etiqueta: 'Ranking Operativo',
+        titulo: 'RANKING OPERATIVO',
+        icono: Iconos.ranking,
+        seccion: _SeccionMenu.informes,
+        pagina: PaginaRanking(),
+      ),
+      const _DestinoNavegacion(
+        etiqueta: 'Rendimiento de Operador',
+        titulo: 'RENDIMIENTO DE OPERADOR',
+        icono: Iconos.rendimiento,
+        seccion: _SeccionMenu.informes,
+        pagina: RendimientoOperador(),
+      ),
+      const _DestinoNavegacion(
+        etiqueta: 'Comparativo de Rutas',
+        titulo: 'COMPARATIVO DE RUTAS',
+        icono: Iconos.comparativo,
+        seccion: _SeccionMenu.informes,
+        pagina: ComparativoRutasPage(),
+      ),
+      _DestinoNavegacion(
+        etiqueta: 'Diagnostico Operativo',
+        titulo: 'DIAGNOSTICO OPERATIVO',
+        icono: Iconos.diagnostico,
+        seccion: _SeccionMenu.informes,
+        pagina: PaginaDiagnosticoOperativo(
+          key: ValueKey('diagnostico_operativo_$_empresaSeleccionada'),
+          empresaInicial: _empresaSeleccionada,
+        ),
+      ),
+      const _DestinoNavegacion(
+        etiqueta: 'Transcurso Simulado',
+        titulo: 'TRANSCURSO SIMULADO',
+        icono: Iconos.simulacion,
+        seccion: _SeccionMenu.configuraciones,
+        pagina: HojaSimulacion(),
+      ),
+      const _DestinoNavegacion(
+        etiqueta: 'Validacion de Equipos',
+        titulo: 'VALIDACION DE EQUIPOS',
+        icono: Iconos.validar,
+        seccion: _SeccionMenu.configuraciones,
+        pagina: ValidacionEquiposPage(),
+      ),
+      _DestinoNavegacion(
+        etiqueta: 'Configuracion Operativa',
+        titulo: 'CONFIGURACION OPERATIVA',
+        icono: Iconos.configuracionOperativa,
+        seccion: _SeccionMenu.configuraciones,
+        pagina: PaginaConfiguracionOperativa(
+          key: ValueKey('config_operativa_$_empresaSeleccionada'),
+          empresaInicial: _empresaSeleccionada,
+        ),
       ),
     ];
-  }
-
-  List<BottomNavigationBarItem> get _itemsNavegacionInferior {
-    final itemsCliente = const [
-      BottomNavigationBarItem(
-        icon: Icon(Icons.sensors),
-        activeIcon: Icon(Icons.sensors, color: Colors.orange),
-        label: 'En Vivo',
-      ),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.history),
-        activeIcon: Icon(Icons.history, color: Colors.orange),
-        label: 'Historico',
-      ),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.engineering),
-        activeIcon: Icon(Icons.engineering, color: Colors.orange),
-        label: 'Operadores',
-      ),
-    ];
-
-    if (_modoClienteSimple) return itemsCliente;
-
-    return itemsCliente;
   }
 
   @override
   Widget build(BuildContext context) {
-    String tituloHeader;
-
-    switch (_indiceActual) {
-      case 0:
-        tituloHeader = 'TRACKING EN VIVO';
-        break;
-      case 1:
-        tituloHeader = 'HISTORIAL DE RUTAS';
-        break;
-      case 2:
-        tituloHeader = 'GESTION DE OPERADORES';
-        break;
-      case 3:
-        tituloHeader = 'RANKING OPERATIVO';
-        break;
-      case 4:
-        tituloHeader = 'SIMULACION DE TRANSCURSO';
-        break;
-      case 5:
-        tituloHeader = 'Rendimiento';
-        break;
-      case 6:
-        tituloHeader = 'COMPARATIVO DE RUTAS';
-        break;
-      case 7:
-        tituloHeader = 'CONFIGURACION OPERATIVA';
-        break;
-      case 8:
-        tituloHeader = 'DIAGNOSTICO OPERATIVO';
-        break;
-      default:
-        tituloHeader = 'TrackMAPE';
-    }
-
-    final paginas = _paginas;
-    final itemsNavegacion = _itemsNavegacionInferior;
-    final indicePagina = _indiceActual < paginas.length ? _indiceActual : 0;
-    final indiceNavegacion = _indiceActual < itemsNavegacion.length
-        ? _indiceActual
-        : 0;
+    final destinos = _destinos;
+    final indicePagina = _indiceActual < destinos.length ? _indiceActual : 0;
+    final destinoActual = destinos[indicePagina];
+    final paginas = destinos.map((destino) => destino.pagina).toList();
     final nombreEmpresa = _nombreEmpresaSeleccionada();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        toolbarHeight: _modoClienteSimple ? 74 : null,
-        title: _buildTituloHeader(tituloHeader, nombreEmpresa),
-        centerTitle: true,
-        backgroundColor: Colors.black,
-        elevation: 4,
-        shadowColor: Colors.orange.withOpacity(0.2),
-        iconTheme: const IconThemeData(color: Colors.orange),
-        actions: [
-          if (!_modoClienteSimple) ...[
-            _buildSelectorEmpresa(),
-            const SizedBox(width: 10),
-          ],
-        ],
-      ),
-      drawer: _crearMenuLateral(),
-      body: IndexedStack(index: indicePagina, children: paginas),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: indiceNavegacion,
-          onTap: (indice) {
-            setState(() {
-              _indiceActual = indice;
-            });
+      backgroundColor: ColoresApp.fondoSecundario,
+      appBar: EncabezadoOrg(
+        izquierda: Builder(
+          builder: (context) {
+            return IconButton(
+              tooltip: 'Menu',
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              icon: const IconoAtomo(
+                icono: Iconos.menu,
+                contexto: ContextoIcono.activo,
+                tamano: 26,
+              ),
+            );
           },
-          backgroundColor: const Color(0xFF1A1A1A),
-          selectedItemColor: Colors.orange,
-          unselectedItemColor: Colors.white54,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          type: BottomNavigationBarType.fixed,
-          items: itemsNavegacion,
+        ),
+        centro: _buildCentroEncabezado(destinoActual.titulo),
+        derecha: _buildAccionSesion(),
+      ),
+      drawer: _crearMenuLateral(destinos),
+      body: ContenidoOrg(
+        opcionesSuperiores: _buildPanelFiltrosGlobal(nombreEmpresa),
+        contenidoPrincipal: IndexedStack(
+          index: indicePagina,
+          children: paginas,
         ),
       ),
     );
@@ -201,204 +210,173 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
     return RepositorioMonitoreo.nombreEmpresaDashboard(_empresaSeleccionada);
   }
 
-  Widget _buildTituloHeader(String tituloHeader, String nombreEmpresa) {
-    if (!_modoClienteSimple) {
-      return Text(
-        tituloHeader,
-        style: const TextStyle(
-          color: Colors.orange,
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
-          letterSpacing: 1.2,
-        ),
-      );
-    }
-
+  Widget _buildCentroEncabezado(String tituloHeader) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          tituloHeader,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: Colors.orange,
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            letterSpacing: 1.0,
-          ),
+        const TextoAtomo(
+          texto: 'TrackMAPE',
+          contexto: ContextoTexto.secundario,
         ),
-        const SizedBox(height: 3),
-        Text(
-          nombreEmpresa,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontWeight: FontWeight.w700,
-            fontSize: 10.5,
-            height: 1.05,
-          ),
+        TextoAtomo(
+          texto: tituloHeader,
+          contexto: ContextoTexto.titulo,
+          maxLineas: 1,
         ),
       ],
     );
   }
 
-  Widget _buildSelectorEmpresa() {
-    return Center(
-      child: Container(
-        height: 38,
-        width: MediaQuery.sizeOf(context).width < 760 ? 170 : 280,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF151515),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.orange.withValues(alpha: 0.65)),
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: _empresaSeleccionada,
-            isExpanded: true,
-            dropdownColor: const Color(0xFF151515),
-            iconEnabledColor: Colors.orange,
-            style: const TextStyle(
-              color: Colors.orange,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-            items: _empresasDashboard
-                .map(
-                  (empresa) => DropdownMenuItem<String>(
-                    value: empresa.id,
-                    child: Text(
-                      empresa.nombre,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-                .toList(),
-            selectedItemBuilder: (context) {
-              return _empresasDashboard
-                  .map(
-                    (empresa) => Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        empresa.nombre,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList();
-            },
-            onChanged: (valor) {
-              if (valor == null || valor == _empresaSeleccionada) return;
-              setState(() {
-                _empresaSeleccionada = valor;
-              });
-            },
-          ),
-        ),
+  Widget _buildAccionSesion() {
+    return IconButton(
+      tooltip: 'Sesion',
+      onPressed: () {},
+      icon: const IconoAtomo(
+        icono: Iconos.sesion,
+        contexto: ContextoIcono.normal,
+        tamano: 24,
       ),
     );
   }
 
-  Widget _crearMenuLateral() {
-    return Drawer(
-      backgroundColor: const Color(0xFF1E1E1E),
-      child: Column(
+  Widget _buildPanelFiltrosGlobal(String nombreEmpresa) {
+    return OpcionesSuperioresMol(
+      titulo: 'Filtros de operacion',
+      contenido: Wrap(
+        spacing: Espaciado.base,
+        runSpacing: Espaciado.pequeno,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(
-              color: Colors.black,
-              border: Border(
-                bottom: BorderSide(color: Colors.orange, width: 2),
-              ),
+          SizedBox(width: 360, child: _buildSelectorEmpresa()),
+          Container(
+            constraints: const BoxConstraints(maxWidth: 360),
+            padding: const EdgeInsets.symmetric(
+              horizontal: Espaciado.base,
+              vertical: Espaciado.pequeno,
             ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.map, color: Colors.orange, size: 40),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'TrackMAPE',
-                    style: TextStyle(
-                      color: Colors.orange,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
+            decoration: BoxDecoration(
+              color: ColoresApp.fondoPrimario,
+              borderRadius: BorderRadius.circular(Radios.grande),
+              border: Border.all(color: ColoresApp.borde),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const IconoAtomo(
+                  icono: Iconos.empresa,
+                  contexto: ContextoIcono.tenue,
+                  tamano: 18,
+                ),
+                const SizedBox(width: Espaciado.pequeno),
+                Flexible(
+                  child: TextoAtomo(
+                    texto: nombreEmpresa,
+                    contexto: ContextoTexto.secundario,
+                    maxLineas: 1,
                   ),
-                  Text(
-                    'Sistema de Supervision',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          _itemMenu(Icons.sensors, 'Monitoreo en Tiempo Real', 0),
-          _itemMenu(Icons.history, 'Consulta Historica', 1),
-          const Divider(color: Colors.white10, indent: 20, endIndent: 20),
-          _itemMenu(Icons.engineering, 'Base de Operadores', 2),
-          if (!_modoClienteSimple) ...[
-            _itemMenu(Icons.leaderboard_rounded, 'Ranking Operativo', 3),
-            _itemMenu(
-              Icons.play_circle_fill,
-              'Transcurso Simulado',
-              4,
-              color: Colors.greenAccent,
-            ),
-            _itemMenu(Icons.fact_check_rounded, 'Rendimiento de Operador', 5),
-            _itemMenu(Icons.compare_arrows_rounded, 'Comparativo de Rutas', 6),
-            _itemMenu(
-              Icons.edit_location_alt_rounded,
-              'Configuracion Operativa',
-              7,
-              color: Colors.cyanAccent,
-            ),
-            _itemMenu(
-              Icons.route_rounded,
-              'Diagnostico Operativo',
-              8,
-              color: Colors.amberAccent,
-            ),
-          ],
-          const Spacer(),
-          const Divider(color: Colors.white24),
-          _itemMenu(Icons.logout, 'Cerrar Sesion', -1, color: Colors.redAccent),
-          const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  Widget _itemMenu(
-    IconData icono,
-    String titulo,
-    int indice, {
-    Color color = Colors.white,
-  }) {
-    final bool seleccionado = _indiceActual == indice;
+  Widget _buildSelectorEmpresa() {
+    if (_empresasDashboard.isEmpty) {
+      return const TextoAtomo(
+        texto: 'Sin empresas disponibles',
+        contexto: ContextoTexto.secundario,
+      );
+    }
 
-    return ListTile(
-      leading: Icon(icono, color: seleccionado ? Colors.orange : color),
-      title: Text(
-        titulo,
-        style: TextStyle(
-          color: seleccionado ? Colors.orange : color,
-          fontWeight: seleccionado ? FontWeight.bold : FontWeight.w500,
+    return DropdownButtonFormField<String>(
+      key: ValueKey(_empresaSeleccionada),
+      initialValue: _empresaSeleccionada,
+      isExpanded: true,
+      dropdownColor: ColoresApp.fondoPrimario,
+      style: const TextStyle(
+        color: ColoresApp.textoPrimario,
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+      ),
+      decoration: const InputDecoration(
+        labelText: 'Empresa',
+        prefixIcon: Icon(Icons.apartment_rounded),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: Espaciado.base,
+          vertical: Espaciado.pequeno,
         ),
       ),
-      selected: seleccionado,
-      onTap: () {
-        if (indice == -1) {
-          return;
-        }
+      items: _empresasDashboard
+          .map(
+            (empresa) => DropdownMenuItem<String>(
+              value: empresa.id,
+              child: Text(empresa.nombre, overflow: TextOverflow.ellipsis),
+            ),
+          )
+          .toList(),
+      onChanged: (valor) {
+        if (valor == null || valor == _empresaSeleccionada) return;
+        setState(() {
+          _empresaSeleccionada = valor;
+        });
+      },
+    );
+  }
 
+  Widget _crearMenuLateral(List<_DestinoNavegacion> destinos) {
+    return MenuLateralOrg(
+      encabezado: const SeccionSuperiorMol(
+        titulo: 'TrackMAPE',
+        subtitulo: 'Sistema operativo de flota',
+      ),
+      formularios: SeccionExpandibleMol(
+        titulo: 'Formularios',
+        icono: Iconos.formularios,
+        items: _itemsPorSeccion(destinos, _SeccionMenu.formularios),
+      ),
+      informes: SeccionExpandibleMol(
+        titulo: 'Informes',
+        icono: Iconos.informes,
+        items: _itemsPorSeccion(destinos, _SeccionMenu.informes),
+      ),
+      configuraciones: SeccionExpandibleMol(
+        titulo: 'Configuraciones',
+        icono: Iconos.configuraciones,
+        items: _itemsPorSeccion(destinos, _SeccionMenu.configuraciones),
+      ),
+      sesion: SeccionUsuarioMol(
+        nombre: 'Usuario',
+        rol: 'Sesion activa',
+        onCerrarSesion: () => Navigator.maybePop(context),
+      ),
+    );
+  }
+
+  List<Widget> _itemsPorSeccion(
+    List<_DestinoNavegacion> destinos,
+    _SeccionMenu seccion,
+  ) {
+    final items = <Widget>[];
+
+    for (var indice = 0; indice < destinos.length; indice++) {
+      final destino = destinos[indice];
+      if (destino.seccion != seccion) continue;
+      items.add(_itemMenu(destino, indice));
+    }
+
+    return items;
+  }
+
+  Widget _itemMenu(_DestinoNavegacion destino, int indice) {
+    return ItemMenuAtomo(
+      icono: destino.icono,
+      etiqueta: destino.etiqueta,
+      activo: _indiceActual == indice,
+      onTap: () {
         setState(() {
           _indiceActual = indice;
         });
@@ -407,4 +385,22 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
       },
     );
   }
+}
+
+enum _SeccionMenu { formularios, informes, configuraciones }
+
+class _DestinoNavegacion {
+  final String etiqueta;
+  final String titulo;
+  final IconData icono;
+  final _SeccionMenu seccion;
+  final Widget pagina;
+
+  const _DestinoNavegacion({
+    required this.etiqueta,
+    required this.titulo,
+    required this.icono,
+    required this.seccion,
+    required this.pagina,
+  });
 }

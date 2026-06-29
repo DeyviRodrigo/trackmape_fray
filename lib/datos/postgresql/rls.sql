@@ -1,0 +1,1 @@
+-- Sin policies RLS en schema public
