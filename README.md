@@ -34,6 +34,13 @@ Desde esta conversacion:
 
 ## Bitacora de sesiones
 
+### 2026-10-15 - Referencia de arquitectura consolidada
+
+- La referencia `arquitectura_modelo` se conserva en el repositorio `DMMaraM/trazmape_fase2.1`, en `D:\Proyectos\Fase 2\modulo-generador-de-carnets__extraido\trazmape_fase2.1`.
+- La variante que estaba dentro de este proyecto esta guardada en la rama remota `consolidacion/20261015/arquitectura_modelo-fcda6699` y en la rama local `archivo-local/20261015/arquitectura_modelo-fcda6699/integration` de la carpeta conservada.
+- Se retira la copia de referencia y su entrada de subrepositorio `arquitectura_modelo`. La carpeta ya estaba excluida del analizador y la aplicacion no la importa.
+- Se actualiza este README para documentar la ubicacion unica y la conservacion de las variantes en Git.
+
 ### 2026-06-28
 
 #### Objetivo trabajado
