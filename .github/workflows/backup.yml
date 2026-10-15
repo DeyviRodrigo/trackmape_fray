@@ -1,0 +1,42 @@
+name: Backup Database
+on:
+  schedule:
+    - cron: '0 0 * * *' # Se ejecuta diariamente a medianoche
+  workflow_dispatch:     # Permite ejecutarlo manualmente cuando quieras
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get install -y wget gnupg2 lsb-release
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          
+      - name: Generate Backups
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
+        run: |
+          # Usamos la ruta absoluta hacia el binario de la versión 17
+          PG_DUMP_PATH="/usr/lib/postgresql/17/bin/pg_dump"
+          
+          $PG_DUMP_PATH "$DB_URL" --schema-only --section=pre-data --schema=public --no-privileges --no-owner > tablas_puras.sql
+          $PG_DUMP_PATH "$DB_URL" --data-only --schema=public --column-inserts --no-privileges --no-owner > datos.sql
+          $PG_DUMP_PATH "$DB_URL" --schema-only --section=post-data --schema=public --no-privileges --no-owner > constraints.sql
+          
+      - name: Push to Repository
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add *.sql
+          # Solo hace commit y push si hubo cambios en los archivos
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Backup automático: $(date)" && git push)
