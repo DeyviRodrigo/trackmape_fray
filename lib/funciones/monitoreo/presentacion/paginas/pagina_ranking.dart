@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
@@ -21,7 +22,7 @@ class _PaginaRankingState extends State<PaginaRanking> {
   @override
   void initState() {
     super.initState();
-    _fechaConsulta = DateTime.now();
+    _fechaConsulta = RelojAplicacion.ahora;
   }
 
   @override
@@ -87,12 +88,12 @@ class _PaginaRankingState extends State<PaginaRanking> {
                 ),
                 const SizedBox(height: 10),
                 ...vista.volquetes.asMap().entries.map(
-                      (entry) => _buildRankingCard(
-                        item: entry.value,
-                        posicion: entry.key + 1,
-                        esVolquete: true,
-                      ),
-                    ),
+                  (entry) => _buildRankingCard(
+                    item: entry.value,
+                    posicion: entry.key + 1,
+                    esVolquete: true,
+                  ),
+                ),
                 const SizedBox(height: 20),
               ],
               if (vista.cargadores.isNotEmpty) ...[
@@ -102,12 +103,12 @@ class _PaginaRankingState extends State<PaginaRanking> {
                 ),
                 const SizedBox(height: 10),
                 ...vista.cargadores.asMap().entries.map(
-                      (entry) => _buildRankingCard(
-                        item: entry.value,
-                        posicion: entry.key + 1,
-                        esVolquete: false,
-                      ),
-                    ),
+                  (entry) => _buildRankingCard(
+                    item: entry.value,
+                    posicion: entry.key + 1,
+                    esVolquete: false,
+                  ),
+                ),
               ],
             ],
           );
@@ -117,11 +118,12 @@ class _PaginaRankingState extends State<PaginaRanking> {
   }
 
   Future<void> _seleccionarFecha() async {
+    if (RelojAplicacion.modoHistorico) return;
     final seleccionada = await showDatePicker(
       context: context,
       initialDate: _fechaConsulta,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: RelojAplicacion.ahora,
       helpText: 'Seleccionar fecha del ranking',
     );
 
@@ -154,7 +156,7 @@ class _PaginaRankingState extends State<PaginaRanking> {
     );
     final puntosDelDia = [...trayectoria];
 
-    if (_esMismoDia(_fechaConsulta, DateTime.now())) {
+    if (_esMismoDia(_fechaConsulta, RelojAplicacion.ahora)) {
       final conexiones = await _repositorio.obtenerUltimasPosiciones();
       for (final conexion in conexiones) {
         final id = conexion['fk_emisor']?.toString();
@@ -235,8 +237,9 @@ class _PaginaRankingState extends State<PaginaRanking> {
     final porRecorrido = b.resumen.recorridoKm.compareTo(a.resumen.recorridoKm);
     if (porRecorrido != 0) return porRecorrido;
 
-    final porVelocidad =
-        b.resumen.velocidadPromedioKmh.compareTo(a.resumen.velocidadPromedioKmh);
+    final porVelocidad = b.resumen.velocidadPromedioKmh.compareTo(
+      a.resumen.velocidadPromedioKmh,
+    );
     if (porVelocidad != 0) return porVelocidad;
 
     return b.resumen.tramosValidos.compareTo(a.resumen.tramosValidos);
@@ -367,7 +370,9 @@ class _PaginaRankingState extends State<PaginaRanking> {
               if (esVolquete)
                 _buildBadge('${item.metricas.ciclos} ciclos')
               else
-                _buildBadge('${item.resumen.recorridoKm.toStringAsFixed(1)} km'),
+                _buildBadge(
+                  '${item.resumen.recorridoKm.toStringAsFixed(1)} km',
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -387,10 +392,7 @@ class _PaginaRankingState extends State<PaginaRanking> {
                 'Vel Max',
                 '${item.resumen.velocidadMaximaKmh.toStringAsFixed(1)} km/h',
               ),
-              _buildMetricChip(
-                'Tramos',
-                '${item.resumen.tramosValidos}',
-              ),
+              _buildMetricChip('Tramos', '${item.resumen.tramosValidos}'),
               if (esVolquete) ...[
                 _buildMetricChip(
                   'Prom ciclo',

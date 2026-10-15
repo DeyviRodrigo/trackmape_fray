@@ -1,6 +1,11 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 
 import '../modelos/modelo_equipo.dart';
+import 'fuente_demostracion_monitoreo.dart';
 
 class EmpresaDashboardMonitoreo {
   const EmpresaDashboardMonitoreo({required this.id, required this.nombre});
@@ -11,6 +16,13 @@ class EmpresaDashboardMonitoreo {
 
 class RepositorioMonitoreo {
   final _supabase = Supabase.instance.client;
+  // El CSV temporal solo se activa en una compilacion que lo solicite.
+  static const bool modoDemostracionTemporal = bool.fromEnvironment(
+    'MODO_DEMOSTRACION',
+    defaultValue: false,
+  );
+  static DateTime get fechaDemostracion =>
+      FuenteDemostracionMonitoreo.fechaActiva;
   static const String tipoEquipoSeeedWioTrackerL1 = 'SEEED WIO TRACKER L1';
   static const String empresaFrancisco1 =
       'c6a59aec-29ea-4e42-8ece-581df5e4459d';
@@ -50,7 +62,28 @@ class RepositorioMonitoreo {
 
   static final Map<String, _CacheListaMapas> _cacheListasMapas = {};
 
+  Future<int?> seleccionarCsvDemostracion() async {
+    final resultado = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+      withData: true,
+    );
+    if (resultado == null || resultado.files.isEmpty) return null;
+    final archivo = resultado.files.single;
+    final bytes = archivo.bytes;
+    if (bytes == null) {
+      throw const FormatException(
+        'No fue posible leer el archivo seleccionado.',
+      );
+    }
+    return FuenteDemostracionMonitoreo.cargarDesdeCsv(
+      utf8.decode(bytes),
+      nombreArchivo: archivo.name,
+    );
+  }
+
   Future<List<EmpresaDashboardMonitoreo>> obtenerEmpresasDashboard() async {
+    if (modoDemostracionTemporal) return empresasDashboardFrancisco;
     try {
       final respuesta = await _supabase
           .from('empresas')
@@ -114,6 +147,13 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) {
+    if (modoDemostracionTemporal) {
+      return Stream.value([
+        ...FuenteDemostracionMonitoreo.equiposActivos.map(
+          ModeloEquipo.fromJson,
+        ),
+      ]);
+    }
     return _supabase
         .from('equipos_control')
         .stream(primaryKey: ['id_equipo_control'])
@@ -154,6 +194,11 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) async {
+    if (modoDemostracionTemporal) {
+      return FuenteDemostracionMonitoreo.equiposActivos
+          .map((equipo) => Map<String, dynamic>.from(equipo))
+          .toList();
+    }
     final cacheKey =
         'equipos::$soloCodigosConPrefijoExclamacion::${tipoEquipoControl ?? ''}::${fkEmpresa ?? ''}::${fkSede ?? ''}';
     final cache = _cacheListasMapas[cacheKey];
@@ -226,6 +271,17 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) {
+    if (modoDemostracionTemporal) return _streamDemostracionEnVivo();
+    if (RelojAplicacion.modoHistorico) {
+      return Stream.fromFuture(
+        obtenerTrayectoriaPorFecha(
+          RelojAplicacion.ahora,
+          tipoEquipoControl: tipoEquipoControl,
+          fkEmpresa: fkEmpresa,
+          fkSede: fkSede,
+        ),
+      );
+    }
     return Stream<List<Map<String, dynamic>>>.multi((controller) async {
       while (!controller.isClosed) {
         try {
@@ -250,6 +306,31 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) async {
+    if (modoDemostracionTemporal) {
+      final primeras = <String, Map<String, dynamic>>{};
+      for (final posicion in FuenteDemostracionMonitoreo.posicionesActivas) {
+        primeras.putIfAbsent(posicion['fk_emisor'].toString(), () => posicion);
+      }
+      return primeras.values
+          .map(
+            (posicion) => {
+              ...posicion,
+              'tiempo': DateTime.now()
+                  .subtract(const Duration(seconds: 2))
+                  .toIso8601String(),
+            },
+          )
+          .toList();
+    }
+    if (RelojAplicacion.modoHistorico) {
+      final trayectoria = await obtenerTrayectoriaPorFecha(
+        RelojAplicacion.ahora,
+        tipoEquipoControl: tipoEquipoControl,
+        fkEmpresa: fkEmpresa,
+        fkSede: fkSede,
+      );
+      return _ultimaPosicionPorEquipo(trayectoria).values.toList();
+    }
     final cacheKey =
         'ultimas_posiciones::${tipoEquipoControl ?? ''}::${fkEmpresa ?? ''}::${fkSede ?? ''}';
     final cache = _cacheListasMapas[cacheKey];
@@ -299,6 +380,25 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) async {
+    if (modoDemostracionTemporal) {
+      return {
+        for (final equipo in FuenteDemostracionMonitoreo.equiposActivos)
+          equipo['id_equipo_control'].toString(): DateTime.now(),
+      };
+    }
+    if (RelojAplicacion.modoHistorico) {
+      final trayectoria = await obtenerTrayectoriaPorFecha(
+        RelojAplicacion.ahora,
+        tipoEquipoControl: tipoEquipoControl,
+        fkEmpresa: fkEmpresa,
+        fkSede: fkSede,
+      );
+      final ultimas = _ultimaPosicionPorEquipo(trayectoria);
+      return {
+        for (final entry in ultimas.entries)
+          entry.key: DateTime.tryParse(entry.value['tiempo']?.toString() ?? ''),
+      };
+    }
     try {
       final equipos = await obtenerEquiposRaw(
         tipoEquipoControl: tipoEquipoControl,
@@ -341,6 +441,19 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) {
+    if (modoDemostracionTemporal) {
+      return Stream.value(FuenteDemostracionMonitoreo.posicionesActivas);
+    }
+    if (RelojAplicacion.modoHistorico) {
+      return Stream.fromFuture(
+        obtenerTrayectoriaPorFecha(
+          RelojAplicacion.ahora,
+          tipoEquipoControl: tipoEquipoControl,
+          fkEmpresa: fkEmpresa,
+          fkSede: fkSede,
+        ),
+      );
+    }
     return _supabase
         .from('posiciones_temp')
         .stream(primaryKey: ['id_posicion'])
@@ -378,9 +491,15 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) async {
-    final esHoy = _esMismoDia(fecha, DateTime.now());
+    if (modoDemostracionTemporal) {
+      return _esMismoDia(fecha, fechaDemostracion)
+          ? FuenteDemostracionMonitoreo.posicionesActivas
+          : [];
+    }
+    final fechaConsulta = RelojAplicacion.fechaConsulta(fecha);
+    final esHoy = RelojAplicacion.esDiaActual(fechaConsulta);
     final cacheKey =
-        'trayectoria::${_claveFecha(fecha)}::${tipoEquipoControl ?? ''}::${fkEmpresa ?? ''}::${fkSede ?? ''}';
+        'trayectoria::${_claveFecha(fechaConsulta)}::${RelojAplicacion.modoHistorico ? RelojAplicacion.ahora.toIso8601String() : ''}::${tipoEquipoControl ?? ''}::${fkEmpresa ?? ''}::${fkSede ?? ''}';
     final cache = _cacheListasMapas[cacheKey];
     final ttl = esHoy ? _ttlTrayectoriaHoy : _ttlTrayectoriaHistorica;
     if (cache != null && !cache.expirado(ttl)) {
@@ -389,7 +508,7 @@ class RepositorioMonitoreo {
 
     try {
       final resultado = await _obtenerPosicionesHistoricasValidadasPorFecha(
-        fecha,
+        fechaConsulta,
         tipoEquipoControl: tipoEquipoControl,
         fkEmpresa: fkEmpresa,
         fkSede: fkSede,
@@ -409,6 +528,63 @@ class RepositorioMonitoreo {
     String? fkEmpresa,
     String? fkSede,
   }) async {
+    if (modoDemostracionTemporal) {
+      final ultimos = <String, Map<String, dynamic>>{};
+      for (final punto in FuenteDemostracionMonitoreo.posicionesActivas) {
+        ultimos[punto['fk_emisor'].toString()] = punto;
+      }
+      return FuenteDemostracionMonitoreo.equiposActivos.map((equipo) {
+        final ultimo = ultimos[equipo['id_equipo_control'].toString()];
+        return {
+          'id_equipo_control': equipo['id_equipo_control'],
+          'nombre': equipo['nombre'],
+          'codigo_equipo_control': equipo['codigo_equipo_control'],
+          'estado': 'ok',
+          'detalle': 'Datos locales de demostracion activos',
+          'ultimo_valido': ultimo,
+          'ultimo_crudo': ultimo,
+        };
+      }).toList();
+    }
+    if (RelojAplicacion.modoHistorico) {
+      final equipos = await obtenerEquiposRaw(
+        tipoEquipoControl: tipoEquipoControl ?? tipoEquipoSeeedWioTrackerL1,
+        fkEmpresa: fkEmpresa ?? empresaMonitoreoFija,
+        fkSede: fkSede ?? sedeMonitoreoFija,
+      );
+      final trayectoria = await obtenerTrayectoriaPorFecha(
+        RelojAplicacion.ahora,
+        tipoEquipoControl: tipoEquipoControl,
+        fkEmpresa: fkEmpresa,
+        fkSede: fkSede,
+      );
+      final ultimos = _ultimaPosicionPorEquipo(trayectoria);
+      return equipos.map((equipo) {
+        final id = equipo['id_equipo_control'].toString();
+        final ultimo = ultimos[id];
+        final tiempo = DateTime.tryParse(ultimo?['tiempo']?.toString() ?? '');
+        final activo =
+            tiempo != null &&
+            RelojAplicacion.ahora.difference(tiempo).inSeconds.abs() <= 60;
+        return {
+          'id_equipo_control': id,
+          'nombre': equipo['nombre'],
+          'codigo_equipo_control': equipo['codigo_equipo_control'],
+          'estado': ultimo == null
+              ? 'sin_dato'
+              : activo
+              ? 'ok'
+              : 'sin_dato_reciente',
+          'detalle': ultimo == null
+              ? 'Sin datos durante el dia del corte historico'
+              : activo
+              ? 'Recibiendo datos al momento del corte'
+              : 'Ultimo dato anterior al momento del corte',
+          'ultimo_valido': ultimo,
+          'ultimo_crudo': ultimo,
+        };
+      }).toList();
+    }
     final tipoFiltro = tipoEquipoControl ?? tipoEquipoSeeedWioTrackerL1;
     final empresaFiltro = fkEmpresa ?? empresaMonitoreoFija;
     final sedeFiltro = fkSede ?? sedeMonitoreoFija;
@@ -450,7 +626,7 @@ class RepositorioMonitoreo {
       ultimaCrudaPorCodigo.putIfAbsent(codigoLimpio, () => item);
     }
 
-    final ahora = DateTime.now();
+    final ahora = RelojAplicacion.ahora;
     final diagnostico = <Map<String, dynamic>>[];
 
     for (final equipo in equipos) {
@@ -519,6 +695,22 @@ class RepositorioMonitoreo {
     });
 
     return diagnostico;
+  }
+
+  Stream<List<Map<String, dynamic>>> _streamDemostracionEnVivo() {
+    return Stream<List<Map<String, dynamic>>>.multi((controller) async {
+      final posiciones = FuenteDemostracionMonitoreo.posicionesActivas;
+      var indice = 1;
+
+      while (!controller.isClosed) {
+        final posicion = posiciones[indice];
+        controller.add([
+          {...posicion, 'tiempo': DateTime.now().toIso8601String()},
+        ]);
+        indice = (indice + 1) % posiciones.length;
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
+    });
   }
 
   Future<Map<String, Map<String, dynamic>>> _obtenerEquiposPorCodigo({
@@ -702,22 +894,9 @@ class RepositorioMonitoreo {
       fkEmpresa: fkEmpresa,
       fkSede: fkSede,
     );
-    final inicioDia = DateTime(
-      fecha.year,
-      fecha.month,
-      fecha.day,
-      0,
-      0,
-      0,
-    ).toIso8601String();
-    final finDia = DateTime(
-      fecha.year,
-      fecha.month,
-      fecha.day,
-      23,
-      59,
-      59,
-    ).toIso8601String();
+    final rango = RelojAplicacion.rangoDelDia(fecha);
+    final inicioDia = rango.inicio.toIso8601String();
+    final finDia = rango.fin.toIso8601String();
 
     final receptor = receptorMonitoreoParaEmpresa(fkEmpresa);
     var acumulado = await _consultarPosicionesPorFecha(
@@ -947,6 +1126,26 @@ class RepositorioMonitoreo {
     List<Map<String, dynamic>> origen,
   ) {
     return origen.map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  Map<String, Map<String, dynamic>> _ultimaPosicionPorEquipo(
+    List<Map<String, dynamic>> posiciones,
+  ) {
+    final ultimas = <String, Map<String, dynamic>>{};
+    for (final posicion in posiciones) {
+      final id = posicion['fk_emisor']?.toString().trim() ?? '';
+      if (id.isEmpty) continue;
+      final tiempo = DateTime.tryParse(posicion['tiempo']?.toString() ?? '');
+      if (tiempo == null || tiempo.isAfter(RelojAplicacion.ahora)) continue;
+      final anterior = ultimas[id];
+      final tiempoAnterior = DateTime.tryParse(
+        anterior?['tiempo']?.toString() ?? '',
+      );
+      if (tiempoAnterior == null || tiempo.isAfter(tiempoAnterior)) {
+        ultimas[id] = Map<String, dynamic>.from(posicion);
+      }
+    }
+    return ultimas;
   }
 
   bool _esMismoDia(DateTime a, DateTime b) {

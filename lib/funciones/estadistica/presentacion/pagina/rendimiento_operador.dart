@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/modelos/equipo_rendimiento.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/modelos/resumen_rendimiento.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/repositorios/repositorio_rendimiento_operacional.dart';
@@ -16,7 +17,7 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
   final _repo = RepositorioRendimientoOperacional();
   final _processor = const ProcesadorRendimientoOperacional();
 
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate = RelojAplicacion.ahora;
   List<EquipoRendimiento> _equipos = const [];
   EquipoRendimiento? _equipoSeleccionado;
   bool _loading = false;
@@ -55,11 +56,12 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
   }
 
   Future<void> _selectDate() async {
+    if (RelojAplicacion.modoHistorico) return;
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: RelojAplicacion.ahora,
       helpText: 'Seleccionar fecha',
     );
 
@@ -129,9 +131,7 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: _loadingEquipos
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.orange),
-            )
+          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
           : LayoutBuilder(
               builder: (context, constraints) {
                 final isWide = constraints.maxWidth >= 700;
@@ -179,16 +179,19 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
                                 labelText: 'Equipo',
-                                labelStyle:
-                                    const TextStyle(color: Colors.white70),
+                                labelStyle: const TextStyle(
+                                  color: Colors.white70,
+                                ),
                                 enabledBorder: OutlineInputBorder(
-                                  borderSide:
-                                      const BorderSide(color: Colors.white24),
+                                  borderSide: const BorderSide(
+                                    color: Colors.white24,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 focusedBorder: OutlineInputBorder(
-                                  borderSide:
-                                      const BorderSide(color: Colors.orange),
+                                  borderSide: const BorderSide(
+                                    color: Colors.orange,
+                                  ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
@@ -207,10 +210,12 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
                                   ? null
                                   : (value) {
                                       setState(() {
-                                        _equipoSeleccionado = _equipos.firstWhere(
-                                          (equipo) =>
-                                              equipo.idEquipoControl == value,
-                                        );
+                                        _equipoSeleccionado = _equipos
+                                            .firstWhere(
+                                              (equipo) =>
+                                                  equipo.idEquipoControl ==
+                                                  value,
+                                            );
                                       });
                                     },
                             ),
@@ -222,8 +227,9 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.orange,
                                 foregroundColor: Colors.black,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
                               ),
                               child: const Text('Calcular'),
                             ),
@@ -235,8 +241,9 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
                         const Center(
                           child: Padding(
                             padding: EdgeInsets.symmetric(vertical: 24),
-                            child:
-                                CircularProgressIndicator(color: Colors.orange),
+                            child: CircularProgressIndicator(
+                              color: Colors.orange,
+                            ),
                           ),
                         ),
                       if (_error != null)
@@ -307,9 +314,7 @@ class _RendimientoOperadorState extends State<RendimientoOperador> {
         color: Colors.black,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.orange, width: 1.2),
-        boxShadow: const [
-          BoxShadow(color: Colors.black54, blurRadius: 6),
-        ],
+        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

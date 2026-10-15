@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/modelos/equipo_rendimiento.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/modelos/punto_rendimiento.dart';
 import 'package:trackmape_sup/funciones/estadistica/procesos_rendimiento/repositorios/repositorio_rendimiento_operacional.dart';
@@ -21,7 +22,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
   final ServicioMetricasOperador _servicioMetricas =
       const ServicioMetricasOperador();
 
-  DateTime _fechaSeleccionada = DateTime.now();
+  DateTime _fechaSeleccionada = RelojAplicacion.ahora;
   List<EquipoRendimiento> _equipos = const [];
   EquipoRendimiento? _equipoSeleccionado;
   bool _cargandoEquipos = true;
@@ -149,11 +150,12 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
   }
 
   Future<void> _seleccionarFecha() async {
+    if (RelojAplicacion.modoHistorico) return;
     final picked = await showDatePicker(
       context: context,
       initialDate: _fechaSeleccionada,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: RelojAplicacion.ahora,
       helpText: 'Seleccionar fecha',
     );
 
@@ -308,71 +310,108 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
             ),
             const SizedBox(height: 8),
             Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black26,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Filtro manual del analisis',
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold,
-                      ),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Filtro manual del analisis',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: _ModoFiltro.values
-                          .map(
-                            (modo) => ChoiceChip(
-                              label: Text(modo.etiqueta),
-                              selected: _modoFiltro == modo,
-                              selectedColor: Colors.orange,
-                              backgroundColor: Colors.white10,
-                              labelStyle: TextStyle(
-                                color: _modoFiltro == modo
-                                    ? Colors.black
-                                    : Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              onSelected: (selected) {
-                                if (!selected) {
-                                  return;
-                                }
-                                setState(() {
-                                  _modoFiltro = modo;
-                                });
-                                _cargarDatos();
-                              },
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    children: _ModoFiltro.values
+                        .map(
+                          (modo) => ChoiceChip(
+                            label: Text(modo.etiqueta),
+                            selected: _modoFiltro == modo,
+                            selectedColor: Colors.orange,
+                            backgroundColor: Colors.white10,
+                            labelStyle: TextStyle(
+                              color: _modoFiltro == modo
+                                  ? Colors.black
+                                  : Colors.white,
+                              fontWeight: FontWeight.w600,
                             ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 10),
-                    if (isMobile)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
+                            onSelected: (selected) {
+                              if (!selected) {
+                                return;
+                              }
+                              setState(() {
+                                _modoFiltro = modo;
+                              });
+                              _cargarDatos();
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 10),
+                  if (isMobile)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _modoFiltro == _ModoFiltro.personalizado
+                              ? 'Km/h maximo manual: ${_velocidadManualKmh.toStringAsFixed(0)}'
+                              : 'Km/h maximo del analisis: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        Slider(
+                          value: _velocidadManualKmh,
+                          min: 10,
+                          max: 60,
+                          divisions: 10,
+                          activeColor: Colors.orange,
+                          inactiveColor: Colors.white24,
+                          label:
+                              '${_velocidadManualKmh.toStringAsFixed(0)} km/h',
+                          onChanged: _modoFiltro == _ModoFiltro.personalizado
+                              ? (value) {
+                                  setState(() {
+                                    _velocidadManualKmh = value;
+                                  });
+                                }
+                              : null,
+                          onChangeEnd: _modoFiltro == _ModoFiltro.personalizado
+                              ? (_) => _cargarDatos()
+                              : null,
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
                             _modoFiltro == _ModoFiltro.personalizado
                                 ? 'Km/h maximo manual: ${_velocidadManualKmh.toStringAsFixed(0)}'
                                 : 'Km/h maximo del analisis: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
                             style: const TextStyle(color: Colors.white70),
                           ),
-                          Slider(
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 260,
+                          child: Slider(
                             value: _velocidadManualKmh,
                             min: 10,
                             max: 60,
                             divisions: 10,
                             activeColor: Colors.orange,
                             inactiveColor: Colors.white24,
-                            label: '${_velocidadManualKmh.toStringAsFixed(0)} km/h',
+                            label:
+                                '${_velocidadManualKmh.toStringAsFixed(0)} km/h',
                             onChanged: _modoFiltro == _ModoFiltro.personalizado
                                 ? (value) {
                                     setState(() {
@@ -380,119 +419,78 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
                                     });
                                   }
                                 : null,
-                            onChangeEnd: _modoFiltro == _ModoFiltro.personalizado
+                            onChangeEnd:
+                                _modoFiltro == _ModoFiltro.personalizado
                                 ? (_) => _cargarDatos()
                                 : null,
                           ),
-                        ],
-                      )
-                    else
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _modoFiltro == _ModoFiltro.personalizado
-                                  ? 'Km/h maximo manual: ${_velocidadManualKmh.toStringAsFixed(0)}'
-                                  : 'Km/h maximo del analisis: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 260,
-                            child: Slider(
-                              value: _velocidadManualKmh,
-                              min: 10,
-                              max: 60,
-                              divisions: 10,
-                              activeColor: Colors.orange,
-                              inactiveColor: Colors.white24,
-                              label: '${_velocidadManualKmh.toStringAsFixed(0)} km/h',
-                              onChanged: _modoFiltro == _ModoFiltro.personalizado
-                                  ? (value) {
-                                      setState(() {
-                                        _velocidadManualKmh = value;
-                                      });
-                                    }
-                                  : null,
-                              onChangeEnd: _modoFiltro == _ModoFiltro.personalizado
-                                  ? (_) => _cargarDatos()
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'La ruta cruda no cambia. La ruta reconstruida completa huecos cortos cada 5 segundos y corta solo reconexiones o saltos absurdos. El filtro manual solo ajusta el analisis; no borra el dibujo del mapa.',
-                      style: const TextStyle(
-                        color: Colors.white60,
-                        fontSize: 12,
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  _chip('Crudos validos: ${_puntosCrudos.length}'),
-                  _chip(
-                    'Puntos reales: ${_resultadoProcesado.puntosReales.length}',
-                  ),
-                  _chip(
-                    'Puntos sintéticos: ${_resultadoProcesado.conteoPuntosSinteticos}',
-                  ),
-                  _chip(
-                    'Puntos visibles: ${puntosFiltrados.length}',
-                  ),
-                  _chip(
-                    'Saltos descartados: ${_resultadoProcesado.conteoSaltosDescartados}',
-                  ),
-                  _chip(
-                    'Segmentos continuos: ${segmentosFiltrados.length}',
-                  ),
-                  _chip(
-                    'Media: ${_resultado.estadisticas.mediaDistanciaMetros.toStringAsFixed(1)} m',
-                  ),
-                  _chip(
-                    'Mediana: ${_resultado.estadisticas.medianaDistanciaMetros.toStringAsFixed(1)} m',
-                  ),
-                  _chip(
-                    'P90: ${_resultado.estadisticas.percentil90DistanciaMetros.toStringAsFixed(1)} m',
-                  ),
-                  _chip(
-                    'Reconstruccion: cada 5 s | gap maximo 20 s',
-                    color: Colors.orangeAccent.withOpacity(0.12),
-                    borderColor: Colors.orangeAccent,
-                  ),
-                  _chip(
-                    'Modo: ${_modoFiltro.etiqueta}',
-                    color: Colors.lightBlueAccent.withOpacity(0.12),
-                    borderColor: Colors.lightBlueAccent,
-                  ),
-                  _chip(
-                    'Km/h aplicado: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
-                    color: Colors.lightBlueAccent.withOpacity(0.12),
-                    borderColor: Colors.lightBlueAccent,
+                  const SizedBox(height: 6),
+                  Text(
+                    'La ruta cruda no cambia. La ruta reconstruida completa huecos cortos cada 5 segundos y corta solo reconexiones o saltos absurdos. El filtro manual solo ajusta el analisis; no borra el dibujo del mapa.',
+                    style: const TextStyle(color: Colors.white60, fontSize: 12),
                   ),
                 ],
               ),
-              if (_cargando)
-                const Padding(
-                  padding: EdgeInsets.only(top: 12),
-                  child: LinearProgressIndicator(color: Colors.orange),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              children: [
+                _chip('Crudos validos: ${_puntosCrudos.length}'),
+                _chip(
+                  'Puntos reales: ${_resultadoProcesado.puntosReales.length}',
                 ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
+                _chip(
+                  'Puntos sintéticos: ${_resultadoProcesado.conteoPuntosSinteticos}',
                 ),
+                _chip('Puntos visibles: ${puntosFiltrados.length}'),
+                _chip(
+                  'Saltos descartados: ${_resultadoProcesado.conteoSaltosDescartados}',
+                ),
+                _chip('Segmentos continuos: ${segmentosFiltrados.length}'),
+                _chip(
+                  'Media: ${_resultado.estadisticas.mediaDistanciaMetros.toStringAsFixed(1)} m',
+                ),
+                _chip(
+                  'Mediana: ${_resultado.estadisticas.medianaDistanciaMetros.toStringAsFixed(1)} m',
+                ),
+                _chip(
+                  'P90: ${_resultado.estadisticas.percentil90DistanciaMetros.toStringAsFixed(1)} m',
+                ),
+                _chip(
+                  'Reconstruccion: cada 5 s | gap maximo 20 s',
+                  color: Colors.orangeAccent.withOpacity(0.12),
+                  borderColor: Colors.orangeAccent,
+                ),
+                _chip(
+                  'Modo: ${_modoFiltro.etiqueta}',
+                  color: Colors.lightBlueAccent.withOpacity(0.12),
+                  borderColor: Colors.lightBlueAccent,
+                ),
+                _chip(
+                  'Km/h aplicado: ${_velocidadAplicadaKmh.toStringAsFixed(0)}',
+                  color: Colors.lightBlueAccent.withOpacity(0.12),
+                  borderColor: Colors.lightBlueAccent,
+                ),
+              ],
+            ),
+            if (_cargando)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: LinearProgressIndicator(color: Colors.orange),
+              ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              ),
             const SizedBox(height: 12),
             if (isWide)
               Expanded(
@@ -545,10 +543,7 @@ class _ComparativoRutasPageState extends State<ComparativoRutasPage> {
         );
 
         if (isWide) {
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: content,
-          );
+          return Padding(padding: const EdgeInsets.all(16), child: content);
         }
 
         return SingleChildScrollView(
@@ -613,7 +608,8 @@ class _MapaComparativo extends StatelessWidget {
               options: MapOptions(initialCenter: centro, initialZoom: 15),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                  urlTemplate:
+                      'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                 ),
                 if (!usaSegmentos && puntos.length >= 2)
                   PolylineLayer(
@@ -646,7 +642,10 @@ class _MapaComparativo extends StatelessWidget {
                   MarkerLayer(
                     markers: [
                       Marker(
-                        point: ll.LatLng(puntos.first.latitud, puntos.first.longitud),
+                        point: ll.LatLng(
+                          puntos.first.latitud,
+                          puntos.first.longitud,
+                        ),
                         width: 24,
                         height: 24,
                         child: const Icon(
@@ -656,7 +655,10 @@ class _MapaComparativo extends StatelessWidget {
                         ),
                       ),
                       Marker(
-                        point: ll.LatLng(puntos.last.latitud, puntos.last.longitud),
+                        point: ll.LatLng(
+                          puntos.last.latitud,
+                          puntos.last.longitud,
+                        ),
                         width: 20,
                         height: 20,
                         child: const Icon(

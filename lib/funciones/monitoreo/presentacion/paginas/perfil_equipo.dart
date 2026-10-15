@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/presentacion/paginas/pagina_historico.dart';
@@ -45,7 +46,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
   @override
   void initState() {
     super.initState();
-    _fechaConsulta = DateTime.now();
+    _fechaConsulta = RelojAplicacion.ahora;
   }
 
   @override
@@ -155,7 +156,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
           );
 
     final conexiones = <Map<String, dynamic>>[];
-    if (_esMismoDia(_fechaConsulta, DateTime.now())) {
+    if (_esMismoDia(_fechaConsulta, RelojAplicacion.ahora)) {
       conexiones.addAll(
         (await _repositorio.obtenerUltimasPosiciones(
           tipoEquipoControl: RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
@@ -195,7 +196,7 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
         ? null
         : DateTime.tryParse(ultimo['tiempo']?.toString() ?? '');
 
-    final ahora = DateTime.now();
+    final ahora = RelojAplicacion.ahora;
     final activo =
         ultimoTiempo != null &&
         ahora.difference(ultimoTiempo).inSeconds.abs() <= 60;
@@ -304,7 +305,9 @@ class _PaginaPerfilEquipoState extends State<PaginaPerfilEquipo> {
       ),
     );
 
-    if (!mounted || fechaRetornada == null) return;
+    if (!mounted || fechaRetornada == null || RelojAplicacion.modoHistorico) {
+      return;
+    }
 
     setState(() {
       _fechaConsulta = DateTime(

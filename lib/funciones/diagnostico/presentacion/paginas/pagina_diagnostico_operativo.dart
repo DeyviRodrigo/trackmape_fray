@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/funciones/diagnostico/dominio/servicios/servicio_diagnostico_operativo.dart';
 import 'package:trackmape_sup/funciones/gis/datos/repositorios/repositorio_gis.dart';
 import 'package:trackmape_sup/funciones/gis/presentacion/widgets/capas_gis_mapa.dart';
@@ -36,7 +37,7 @@ class _PaginaDiagnosticoOperativoState
   void initState() {
     super.initState();
     _empresaSeleccionada = widget.empresaInicial;
-    _fechaSeleccionada = DateTime.now();
+    _fechaSeleccionada = RelojAplicacion.ahora;
     _future = _cargarDatos();
     _cargarEmpresas();
   }
@@ -112,6 +113,7 @@ class _PaginaDiagnosticoOperativoState
   }
 
   void _cambiarFecha(int dias) {
+    if (RelojAplicacion.modoHistorico) return;
     setState(() {
       _fechaSeleccionada = DateTime(
         _fechaSeleccionada.year,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/funciones/gis/datos/repositorios/repositorio_gis.dart';
 import 'package:trackmape_sup/funciones/gis/presentacion/widgets/capas_gis_mapa.dart';
@@ -185,6 +186,34 @@ class _PaginaStreamState extends State<PaginaStream> {
     });
   }
 
+  Future<void> _seleccionarCsvTemporal() async {
+    try {
+      final registros = await _repositorio.seleccionarCsvDemostracion();
+      if (registros == null || !mounted) return;
+
+      setState(() {
+        _cargandoInicial = true;
+        _limpiarEstadoEnVivo();
+        _trayectoriaStream = _crearTrayectoriaStream();
+      });
+      await _cargarDatosIniciales();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV cargado: $registros posiciones disponibles.'),
+        ),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
   Future<void> _cargarDatosIniciales() async {
     try {
       final equipos = await _repositorio.obtenerEquiposRaw(
@@ -218,20 +247,25 @@ class _PaginaStreamState extends State<PaginaStream> {
           _distanciasAcumuladas.putIfAbsent(id, () => 0.0);
         }
 
-        final ahora = DateTime.now();
-        for (final pos in ultimasPosiciones) {
-          _aplicarPosicion(pos, ahora, esInicial: true);
+        final ahora = RelojAplicacion.ahora;
+        if (!RelojAplicacion.modoHistorico) {
+          for (final pos in ultimasPosiciones) {
+            _aplicarPosicion(pos, ahora, esInicial: true);
+          }
         }
 
         _ultimoTiempoSupabase
           ..clear()
           ..addAll(ultimosTiemposSupabase);
-        for (final entry in ultimosTiemposSupabase.entries) {
-          final tiempoActual = _ultimoTiempo[entry.key];
-          final tiempoSupabase = entry.value;
-          if (tiempoSupabase != null &&
-              (tiempoActual == null || tiempoSupabase.isAfter(tiempoActual))) {
-            _ultimoTiempo[entry.key] = tiempoSupabase;
+        if (!RelojAplicacion.modoHistorico) {
+          for (final entry in ultimosTiemposSupabase.entries) {
+            final tiempoActual = _ultimoTiempo[entry.key];
+            final tiempoSupabase = entry.value;
+            if (tiempoSupabase != null &&
+                (tiempoActual == null ||
+                    tiempoSupabase.isAfter(tiempoActual))) {
+              _ultimoTiempo[entry.key] = tiempoSupabase;
+            }
           }
         }
 
@@ -494,7 +528,7 @@ class _PaginaStreamState extends State<PaginaStream> {
   void _verificarAlertasSinDatos({bool mostrarMensaje = true}) {
     if (!mounted || _cargandoInicial) return;
 
-    final ahora = DateTime.now();
+    final ahora = RelojAplicacion.ahora;
     final alertas = <_AlertaSinDatos>[];
 
     for (final entry in equiposInfo.entries) {
@@ -661,7 +695,7 @@ class _PaginaStreamState extends State<PaginaStream> {
           body: StreamBuilder<List<Map<String, dynamic>>>(
             stream: _trayectoriaStream,
             builder: (context, snapshot) {
-              final ahora = DateTime.now();
+              final ahora = RelojAplicacion.ahora;
 
               if (snapshot.hasData && snapshot.data!.isNotEmpty) {
                 for (final punto in snapshot.data!) {
@@ -830,6 +864,29 @@ class _PaginaStreamState extends State<PaginaStream> {
                         top: isMobile ? 58 : 60,
                         right: 10,
                         child: _buildSelectorCapasGis(isMobile: isMobile),
+                      ),
+                      Positioned(
+                        top: 10,
+                        right: isMobile ? 92 : 150,
+                        child: Tooltip(
+                          message: 'Cargar CSV temporal',
+                          child: ElevatedButton.icon(
+                            onPressed: _seleccionarCsvTemporal,
+                            icon: const Icon(Icons.upload_file, size: 18),
+                            label: Text(isMobile ? 'CSV' : 'Cargar CSV'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black.withOpacity(0.8),
+                              foregroundColor: Colors.lightBlueAccent,
+                              side: const BorderSide(
+                                color: Colors.lightBlueAccent,
+                              ),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isMobile ? 8 : 12,
+                                vertical: 10,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                       if (_alertasSinDatos
                           .where(

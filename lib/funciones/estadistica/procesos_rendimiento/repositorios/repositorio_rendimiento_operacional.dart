@@ -1,12 +1,12 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 
 import '../modelos/equipo_rendimiento.dart';
 import '../modelos/punto_rendimiento.dart';
 
 class RepositorioRendimientoOperacional {
-  RepositorioRendimientoOperacional({
-    SupabaseClient? supabase,
-  }) : _supabase = supabase ?? Supabase.instance.client;
+  RepositorioRendimientoOperacional({SupabaseClient? supabase})
+    : _supabase = supabase ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
 
@@ -41,23 +41,9 @@ class RepositorioRendimientoOperacional {
     required EquipoRendimiento equipo,
     required DateTime fecha,
   }) async {
-    final inicioDia = DateTime(
-      fecha.year,
-      fecha.month,
-      fecha.day,
-      0,
-      0,
-      0,
-    ).toIso8601String();
-    final finDia = DateTime(
-      fecha.year,
-      fecha.month,
-      fecha.day,
-      23,
-      59,
-      59,
-      999,
-    ).toIso8601String();
+    final rango = RelojAplicacion.rangoDelDia(fecha);
+    final inicioDia = rango.inicio.toIso8601String();
+    final finDia = rango.fin.toIso8601String();
 
     final codigoCanonico = _canonizarCodigo(equipo.codigoEquipoControl);
     final puntos = <PuntoRendimiento>[];

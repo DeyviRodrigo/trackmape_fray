@@ -19,7 +19,9 @@ class HojaSimulacion extends StatefulWidget {
 class _HojaSimulacionState extends State<HojaSimulacion> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
 
-  DateTime _fechaSimulacion = DateTime.now();
+  DateTime _fechaSimulacion = RepositorioMonitoreo.modoDemostracionTemporal
+      ? RepositorioMonitoreo.fechaDemostracion
+      : DateTime.now();
   List<Map<String, dynamic>> _datosHistoricos = [];
   int _puntero = 0;
   bool _reproduciendo = false;
@@ -41,11 +43,16 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
   // Retorna milisegundos según velocidad
   int _obtenerIntervalo(double velocidad) {
     switch (velocidad) {
-      case 1.0: return 800;
-      case 2.0: return 400;
-      case 4.0: return 200;
-      case 10.0: return 80;
-      default: return 800;
+      case 1.0:
+        return 800;
+      case 2.0:
+        return 400;
+      case 4.0:
+        return 200;
+      case 10.0:
+        return 80;
+      default:
+        return 800;
     }
   }
 
@@ -105,7 +112,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
 
     _timerSimulacion = Timer.periodic(
       Duration(milliseconds: _obtenerIntervalo(_velocidad)),
-          (_) {
+      (_) {
         if (_datosHistoricos.isEmpty || !_reproduciendo) return;
 
         if (_puntero >= _datosHistoricos.length) {
@@ -113,8 +120,8 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
           rastrosCola.clear();
         }
 
-    final punto = _datosHistoricos[_puntero];
-    _procesarPunto(punto);
+        final punto = _datosHistoricos[_puntero];
+        _procesarPunto(punto);
 
         setState(() {
           _puntero++;
@@ -133,10 +140,7 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
 
     final lat = (punto['lat_grados'] as num).toDouble();
     final lon = (punto['lon_grados'] as num).toDouble();
-    final pos = ll.LatLng(
-      lat,
-      lon,
-    );
+    final pos = ll.LatLng(lat, lon);
     final tiempoActual = _parsearFechaHora(punto['tiempo']);
     final posicionAnterior = _ultimaPosicionEquipo[id];
     final tiempoAnterior = _ultimoTiempoEquipo[id];
@@ -145,7 +149,9 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
     var distanciaMetros = 0.0;
     var deltaSegundos = 0;
 
-    if (posicionAnterior != null && tiempoAnterior != null && tiempoActual != null) {
+    if (posicionAnterior != null &&
+        tiempoAnterior != null &&
+        tiempoActual != null) {
       distanciaMetros = _calcularDistanciaMetros(posicionAnterior, pos);
       deltaSegundos = tiempoActual.difference(tiempoAnterior).inSeconds;
       if (deltaSegundos > 0) {
@@ -154,7 +160,8 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
     }
 
     setState(() {
-      final resumenDia = _resumenesDiaPorEquipo[id] ?? const _ResumenSimulacionEquipo();
+      final resumenDia =
+          _resumenesDiaPorEquipo[id] ?? const _ResumenSimulacionEquipo();
       marcadoresActivos[id] = Marker(
         key: ValueKey('sim_${id}_$_puntero'),
         point: pos,
@@ -223,7 +230,9 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
 
     for (final entry in porEquipo.entries) {
       final puntos = [...entry.value]
-        ..sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
+        ..sort(
+          (a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()),
+        );
 
       double kilometros = 0.0;
       double sumaVelocidades = 0.0;
@@ -262,8 +271,9 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
 
       resumenes[entry.key] = _ResumenSimulacionEquipo(
         kilometros: kilometros,
-        velocidadPromedioKmh:
-            tramosValidos == 0 ? 0.0 : (sumaVelocidades / tramosValidos),
+        velocidadPromedioKmh: tramosValidos == 0
+            ? 0.0
+            : (sumaVelocidades / tramosValidos),
         tramosValidos: tramosValidos,
       );
     }
@@ -343,8 +353,31 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
       },
     );
 
-    if (seleccionada != null && !_esMismaFecha(seleccionada, _fechaSimulacion)) {
+    if (seleccionada != null &&
+        !_esMismaFecha(seleccionada, _fechaSimulacion)) {
       await _cargarDatos(seleccionada);
+    }
+  }
+
+  Future<void> _seleccionarCsvTemporal() async {
+    try {
+      final registros = await _repositorio.seleccionarCsvDemostracion();
+      if (registros == null || !mounted) return;
+      await _cargarDatos(RepositorioMonitoreo.fechaDemostracion);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('CSV cargado: $registros posiciones disponibles.'),
+        ),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
     }
   }
 
@@ -360,7 +393,9 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
       fechaHora = DateTime.tryParse(crudo.toString());
     }
 
-    return fechaHora == null ? '00:00:00' : DateFormat('HH:mm:ss').format(fechaHora);
+    return fechaHora == null
+        ? '00:00:00'
+        : DateFormat('HH:mm:ss').format(fechaHora);
   }
 
   String _etiquetaVelocidad() {
@@ -402,6 +437,11 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
         backgroundColor: const Color(0xFF1A1A1A),
         title: const Text('Simulación en tiempo real'),
         actions: [
+          IconButton(
+            tooltip: 'Cargar CSV',
+            onPressed: _seleccionarCsvTemporal,
+            icon: const Icon(Icons.upload_file, color: Colors.lightBlueAccent),
+          ),
           InkWell(
             onTap: _seleccionarFecha,
             borderRadius: BorderRadius.circular(8),
@@ -409,7 +449,11 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.calendar_today, color: Colors.orange, size: 18),
+                  const Icon(
+                    Icons.calendar_today,
+                    color: Colors.orange,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   Text(DateFormat('yyyy-MM-dd').format(_fechaSimulacion)),
                 ],
@@ -427,29 +471,36 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
                 child: FlutterMap(
                   options: MapOptions(
                     initialCenter: _centroInicial,
-                    initialZoom: MediaQuery.of(context).size.width < 760 ? 14.5 : 15,
+                    initialZoom: MediaQuery.of(context).size.width < 760
+                        ? 14.5
+                        : 15,
                   ),
                   children: [
                     TileLayer(
                       urlTemplate:
-                      'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                          'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
                     ),
                     PolylineLayer(
                       polylines: rastrosCola.entries
                           .map(
                             (e) => Polyline(
-                          points: e.value,
-                          color: Colors.greenAccent.withValues(alpha: 0.7),
-                          strokeWidth: 4,
-                        ),
-                      )
+                              points: e.value,
+                              color: Colors.greenAccent.withValues(alpha: 0.7),
+                              strokeWidth: 4,
+                            ),
+                          )
                           .toList(),
                     ),
                     MarkerLayer(markers: marcadoresActivos.values.toList()),
                   ],
                 ),
               ),
-              _buildPanelInferior(total, sliderValue, sliderMax, MediaQuery.of(context).size.width < 760),
+              _buildPanelInferior(
+                total,
+                sliderValue,
+                sliderMax,
+                MediaQuery.of(context).size.width < 760,
+              ),
             ],
           ),
           if (_equipoSeleccionado != null)
@@ -564,7 +615,10 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
                     onChanged: (value) {
                       if (_datosHistoricos.isEmpty) return;
                       setState(() {
-                        _puntero = value.round().clamp(0, _datosHistoricos.length - 1);
+                        _puntero = value.round().clamp(
+                          0,
+                          _datosHistoricos.length - 1,
+                        );
                         rastrosCola.clear();
                       });
                       _procesarPunto(_datosHistoricos[_puntero]);
@@ -778,7 +832,8 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
     final nombre = equiposInfo[id]?['nombre']?.toString().trim() ?? '';
     if (nombre.isNotEmpty) return nombre;
 
-    final codigo = equiposInfo[id]?['codigo_equipo_control']?.toString().trim() ?? '';
+    final codigo =
+        equiposInfo[id]?['codigo_equipo_control']?.toString().trim() ?? '';
     if (codigo.isNotEmpty) return codigo;
 
     return id;
@@ -819,11 +874,13 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
 
   double _calcularDistanciaMetros(ll.LatLng p1, ll.LatLng p2) {
     const double p = 0.017453292519943295;
-    final double a = 0.5 -
+    final double a =
+        0.5 -
         math.cos((p2.latitude - p1.latitude) * p) / 2 +
         math.cos(p1.latitude * p) *
             math.cos(p2.latitude * p) *
-            (1 - math.cos((p2.longitude - p1.longitude) * p)) / 2;
+            (1 - math.cos((p2.longitude - p1.longitude) * p)) /
+            2;
 
     return 12742 * math.asin(math.sqrt(a)) * 1000;
   }

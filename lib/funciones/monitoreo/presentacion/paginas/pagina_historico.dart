@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
 import 'package:trackmape_sup/funciones/gis/datos/repositorios/repositorio_gis.dart';
@@ -81,7 +82,9 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   @override
   void initState() {
     super.initState();
-    fechaSeleccionada = widget.fechaInicial ?? DateTime.now();
+    fechaSeleccionada = RelojAplicacion.fechaConsulta(
+      widget.fechaInicial ?? RelojAplicacion.ahora,
+    );
     _datosHistoricosFuture = _cargarDatosHistoricos();
   }
 
@@ -273,12 +276,13 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   }
 
   void _seleccionarFechaHistorica(DateTime nuevaFecha) {
+    if (RelojAplicacion.modoHistorico) return;
     final fechaNormalizada = DateTime(
       nuevaFecha.year,
       nuevaFecha.month,
       nuevaFecha.day,
     );
-    final hoy = DateTime.now();
+    final hoy = RelojAplicacion.ahora;
     final limiteSuperior = DateTime(hoy.year, hoy.month, hoy.day);
     final limiteInferior = DateTime(2024, 1, 1);
 
@@ -313,7 +317,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
       puntoSeleccionado = actual;
 
       final hora = DateTime.parse(actual['tiempo']);
-      final diff = DateTime.now().difference(hora);
+      final diff = RelojAplicacion.ahora.difference(hora);
       tiempoReporte = diff.inMinutes > 60
           ? '${diff.inHours}h ${diff.inMinutes % 60}m'
           : '${diff.inMinutes} min';
@@ -622,7 +626,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                     dia,
                   );
                   final seleccionado = _esMismoDia(fechaDia, fechaSeleccionada);
-                  final hoy = _esMismoDia(fechaDia, DateTime.now());
+                  final hoy = _esMismoDia(fechaDia, RelojAplicacion.ahora);
                   final habilitado = !_fechaFueraDeRango(fechaDia);
 
                   return InkWell(
@@ -884,7 +888,7 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
   }
 
   bool _fechaFueraDeRango(DateTime fecha) {
-    final hoy = DateTime.now();
+    final hoy = RelojAplicacion.ahora;
     final limiteSuperior = DateTime(hoy.year, hoy.month, hoy.day);
     final limiteInferior = DateTime(2024, 1, 1);
     return fecha.isAfter(limiteSuperior) || fecha.isBefore(limiteInferior);

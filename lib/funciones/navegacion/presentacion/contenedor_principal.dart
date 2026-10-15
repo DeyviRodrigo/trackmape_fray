@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:trackmape_sup/app/tokens/tokens_sistema.dart';
+import 'package:trackmape_sup/core/tiempo/reloj_aplicacion.dart';
 import 'package:trackmape_sup/funciones/diagnostico/presentacion/paginas/pagina_diagnostico_operativo.dart';
 import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/comparativo_rutas_page.dart';
 import 'package:trackmape_sup/funciones/estadistica/presentacion/pagina/pagina_informe.dart';
@@ -248,6 +249,7 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
         runSpacing: Espaciado.pequeno,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          if (RelojAplicacion.modoHistorico) _buildAvisoCorteHistorico(),
           SizedBox(width: 360, child: _buildSelectorEmpresa()),
           Container(
             constraints: const BoxConstraints(maxWidth: 360),
@@ -280,6 +282,37 @@ class _ContenedorPrincipalState extends State<ContenedorPrincipal> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvisoCorteHistorico() {
+    final corte = RelojAplicacion.ahora;
+    final dia = corte.day.toString().padLeft(2, '0');
+    final mes = corte.month.toString().padLeft(2, '0');
+    final hora24 = corte.hour;
+    final hora12 = hora24 % 12 == 0 ? 12 : hora24 % 12;
+    final minuto = corte.minute.toString().padLeft(2, '0');
+    final periodo = hora24 < 12 ? 'a. m.' : 'p. m.';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Espaciado.base,
+        vertical: Espaciado.pequeno,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade900,
+        borderRadius: BorderRadius.circular(Radios.grande),
+        border: Border.all(color: Colors.amberAccent),
+      ),
+      child: Text(
+        'MODO HISTORICO DE PRUEBA - $dia/$mes/${corte.year} '
+        '${hora12.toString().padLeft(2, '0')}:$minuto $periodo',
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
       ),
     );
   }
