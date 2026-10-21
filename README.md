@@ -2,6 +2,12 @@
 
 Supervisor de flota para monitoreo, consulta historica, simulacion de transcurso y validacion de rutas/equipos.
 
+## Documentacion
+
+La documentacion de la migracion a la arquitectura nueva esta en
+[documentacion/](documentacion/): modelo de pantallas, planificacion de
+pestanas, tokens y organizacion de widgets.
+
 ## Proposito de este README
 
 Este archivo sera nuestra bitacora de trabajo del proyecto.
