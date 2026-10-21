@@ -36,7 +36,6 @@ dependencies:
   # --- SERVICIO GPS EN SEGUNDO PLANO ---
   flutter_background_service: ^5.0.6
   flutter_background_service_android: ^6.2.4
-  shared_preferences: ^2.2.3
   # --- RED Y DATOS ---
   dio: ^5.4.1
   http: ^1.2.0
@@ -48,6 +47,10 @@ dependencies:
   google_fonts: ^6.2.1
   cupertino_icons: ^1.0.8
   flutter_map: ^7.0.2
+  file_picker: ^8.1.7
+  xml: ^6.5.0
+  go_router: ^17.5.0
+  flutter_riverpod: ^3.4.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -62,3 +65,11 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    - assets/rutas_operativas/
+  fonts:
+    - family: IconoVolqueteOtf1
+      fonts:
+        - asset: assets/fonts/iconovolquete1.otf
+    - family: IconoCargadorOtf1
+      fonts:
+        - asset: assets/fonts/iconocargador1.otf

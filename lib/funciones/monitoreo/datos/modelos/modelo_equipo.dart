@@ -4,7 +4,7 @@
 /// Adaptado para:
 /// - UUID como id_equipo_control
 /// - fk_empresa obligatorio
-/// - Campo 'activo' en lugar de 'habilitado'
+/// - fecha_inicio / fecha_final para vigencia del equipo
 /// - Campo 'nombre' en lugar de 'nombre_equipo_control'
 /// - Campo 'id_equipo_fabrica' para ID del celular
 ///
@@ -18,10 +18,11 @@ class ModeloEquipo {
   final String? nombre;             // Antes era nombre_equipo_control
   final String? ubicacion;
   final String? direccionMac;
-  final bool activo;                // Antes era habilitado
   final String? observaciones;
   final String? fkAreaAsociada;
   final String? fkEquipoAsociado;
+  final DateTime? fechaInicio;
+  final DateTime? fechaFinal;
 
   ModeloEquipo({
     required this.id,
@@ -33,10 +34,11 @@ class ModeloEquipo {
     this.nombre,
     this.ubicacion,
     this.direccionMac,
-    this.activo = true,
     this.observaciones,
     this.fkAreaAsociada,
     this.fkEquipoAsociado,
+    this.fechaInicio,
+    this.fechaFinal,
   });
 
   /// Constructor desde JSON (respuesta de Supabase)
@@ -51,10 +53,11 @@ class ModeloEquipo {
       nombre: json['nombre']?.toString(),
       ubicacion: json['ubicacion']?.toString(),
       direccionMac: json['direccion_mac']?.toString(),
-      activo: json['activo'] == true,
       observaciones: json['observaciones']?.toString(),
       fkAreaAsociada: json['fk_area_asociada']?.toString(),
       fkEquipoAsociado: json['fk_equipo_asociado']?.toString(),
+      fechaInicio: _parseFecha(json['fecha_inicio']),
+      fechaFinal: _parseFecha(json['fecha_final']),
     );
   }
 
@@ -70,18 +73,31 @@ class ModeloEquipo {
       'nombre': nombre,
       'ubicacion': ubicacion,
       'direccion_mac': direccionMac,
-      'activo': activo,
       'observaciones': observaciones,
       'fk_area_asociada': fkAreaAsociada,
       'fk_equipo_asociado': fkEquipoAsociado,
+      'fecha_inicio': _formatearFecha(fechaInicio),
+      'fecha_final': _formatearFecha(fechaFinal),
     };
   }
+
+  bool get activo => fechaFinal == null;
 
   /// Nombre para mostrar (preferencia: nombre > codigo > id)
   String get nombreMostrar {
     if (nombre != null && nombre!.isNotEmpty) return nombre!;
     if (codigo != null && codigo!.isNotEmpty) return codigo!;
     return id.substring(0, 8); // Primeros 8 caracteres del UUID
+  }
+
+  static DateTime? _parseFecha(dynamic valor) {
+    if (valor == null) return null;
+    return DateTime.tryParse(valor.toString());
+  }
+
+  static String? _formatearFecha(DateTime? valor) {
+    if (valor == null) return null;
+    return valor.toIso8601String().split('T').first;
   }
 
   @override

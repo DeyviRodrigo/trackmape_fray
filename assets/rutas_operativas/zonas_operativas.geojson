@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "zona_demo_carga",
+        "nombre": "Zona Carga Demo",
+        "tipo": "carga"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-69.465200, -14.664900],
+            [-69.464600, -14.664900],
+            [-69.464600, -14.664300],
+            [-69.465200, -14.664300],
+            [-69.465200, -14.664900]
+          ]
+        ]
+      }
+    }
+  ]
+}

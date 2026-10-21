@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/HP/Workspace_Daitec/Repositorio/trazmape_fase2.1/documentacion/datos/**)",
+      "Read(//c/Users/HP/Workspace_Daitec/Repositorio/trazmape_fase2.1/documentacion/datos/SQLite/**)",
+      "Read(//c/Users/HP/Workspace_Daitec/Repositorio/trazmape_fase2.1/documentacion/datos/interfaces/**)",
+      "Read(//c/Users/HP/Workspace_Daitec/Repositorio/trazmape_fase2.1/documentacion/datos/tablas/**)",
+      "Read(//c/Users/HP/Workspace_Daitec/Repositorio/trazmape_fase2.1/documentacion/datos/vistas/**)",
+      "Read(//c/Users/HP/Workspace_Daitec/Repositorio/trazmape_fase2.1/documentacion/datos/rpc/**)"
+    ]
+  }
+}

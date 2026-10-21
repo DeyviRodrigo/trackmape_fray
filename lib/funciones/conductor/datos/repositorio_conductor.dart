@@ -7,7 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Adaptado para:
 /// - equipos_control con UUID y fk_empresa
 /// - posiciones (nueva tabla)
-/// - Campo 'activo' en lugar de 'habilitado'
+/// - fecha_inicio / fecha_final para vigencia del equipo
 /// - Campo 'nombre' en lugar de 'nombre_equipo_control'
 /// - Campo 'id_equipo_fabrica' para ID del celular
 ///
@@ -148,8 +148,8 @@ class RepositorioConductor {
         // Tipo del equipo - TRACKER para aparecer en operadores
         "tipo_equipo_control": "TRACKER",
 
-        // Estado activo
-        "activo": true,
+        // Fecha de alta del equipo
+        "fecha_inicio": DateTime.now().toIso8601String().split('T').first,
       };
 
       // FK sede opcional

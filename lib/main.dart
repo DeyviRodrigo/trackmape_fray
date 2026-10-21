@@ -1,41 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'funciones/navegacion/presentacion/contenedor_principal.dart';
+import 'app2/aplicacion/aplicacion_trackmape.dart';
+import 'app2/conexion_backend/supabase/arranque/cargador_variables_entorno.dart';
+import 'app2/conexion_backend/supabase/arranque/inicializacion_supabase.dart';
+import 'app2/errores/gestion_errores_app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
+  GestionErroresApp.inicializar();
+  await CargadorVariablesEntorno.cargar();
+  await InicializacionSupabase.init();
 
-  final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-
-  if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-    throw Exception('Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env');
-  }
-
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseAnonKey,
-  );
-
-  runApp(const AplicacionTrackMAPE());
-}
-
-class AplicacionTrackMAPE extends StatelessWidget {
-  const AplicacionTrackMAPE({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TrackMAPE',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        primaryColor: Colors.orange,
-        scaffoldBackgroundColor: const Color(0xFF121212),
-      ),
-      home: const ContenedorPrincipal(),
-    );
-  }
+  runApp(const ProviderScope(child: AplicacionTrackMAPE()));
 }

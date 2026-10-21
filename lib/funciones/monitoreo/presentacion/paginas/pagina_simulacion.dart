@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 
 class HojaSimulacion extends StatefulWidget {
@@ -17,7 +19,7 @@ class HojaSimulacion extends StatefulWidget {
 class _HojaSimulacionState extends State<HojaSimulacion> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
 
-  DateTime _fechaSimulacion = DateTime(2026, 1, 15);
+  DateTime _fechaSimulacion = DateTime.now();
   List<Map<String, dynamic>> _datosHistoricos = [];
   int _puntero = 0;
   bool _reproduciendo = false;
@@ -25,10 +27,16 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
   Timer? _timerSimulacion;
   bool _cargando = false;
   bool _estabaReproduciendoDuranteArrastre = false;
+  ll.LatLng _centroInicial = puntoTrabajoLatLng;
 
   Map<String, Map<String, dynamic>> equiposInfo = {};
   Map<String, Marker> marcadoresActivos = {};
   Map<String, List<ll.LatLng>> rastrosCola = {};
+  final Map<String, _EstadoSimulacionEquipo> _estadoActualEquipos = {};
+  final Map<String, _ResumenSimulacionEquipo> _resumenesDiaPorEquipo = {};
+  final Map<String, ll.LatLng> _ultimaPosicionEquipo = {};
+  final Map<String, DateTime> _ultimoTiempoEquipo = {};
+  String? _equipoSeleccionadoId;
 
   // Retorna milisegundos según velocidad
   int _obtenerIntervalo(double velocidad) {
@@ -58,22 +66,31 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
       equiposInfo.clear();
       marcadoresActivos.clear();
       rastrosCola.clear();
+      _estadoActualEquipos.clear();
+      _resumenesDiaPorEquipo.clear();
+      _ultimaPosicionEquipo.clear();
+      _ultimoTiempoEquipo.clear();
+      _equipoSeleccionadoId = null;
     });
 
     final resultados = await Future.wait([
       _repositorio.obtenerEquiposRaw(),
       _repositorio.obtenerTrayectoriaPorFecha(fecha),
+      _repositorio.obtenerUltimasPosiciones(),
     ]);
 
     final equipos = resultados[0];
     final trayectoria = resultados[1];
+    final ultimasPosiciones = resultados[2];
 
     setState(() {
       for (final equipo in equipos) {
         equiposInfo[equipo['id_equipo_control'].toString()] = equipo;
       }
       _datosHistoricos = trayectoria;
+      _resumenesDiaPorEquipo.addAll(_calcularResumenesDia(trayectoria));
       _puntero = 0;
+      _centroInicial = _resolverCentroInicial(trayectoria, ultimasPosiciones);
       _cargando = false;
     });
 
@@ -96,8 +113,8 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
           rastrosCola.clear();
         }
 
-        final punto = _datosHistoricos[_puntero];
-        _procesarPunto(punto);
+    final punto = _datosHistoricos[_puntero];
+    _procesarPunto(punto);
 
         setState(() {
           _puntero++;
@@ -114,18 +131,43 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
     final id = punto['fk_emisor'].toString();
     if (equiposInfo[id]?['activo'] != true) return;
 
+    final lat = (punto['lat_grados'] as num).toDouble();
+    final lon = (punto['lon_grados'] as num).toDouble();
     final pos = ll.LatLng(
-      (punto['lat_grados'] as num).toDouble(),
-      (punto['lon_grados'] as num).toDouble(),
+      lat,
+      lon,
     );
+    final tiempoActual = _parsearFechaHora(punto['tiempo']);
+    final posicionAnterior = _ultimaPosicionEquipo[id];
+    final tiempoAnterior = _ultimoTiempoEquipo[id];
+
+    var velocidadKmh = 0.0;
+    var distanciaMetros = 0.0;
+    var deltaSegundos = 0;
+
+    if (posicionAnterior != null && tiempoAnterior != null && tiempoActual != null) {
+      distanciaMetros = _calcularDistanciaMetros(posicionAnterior, pos);
+      deltaSegundos = tiempoActual.difference(tiempoAnterior).inSeconds;
+      if (deltaSegundos > 0) {
+        velocidadKmh = (distanciaMetros / deltaSegundos) * 3.6;
+      }
+    }
 
     setState(() {
+      final resumenDia = _resumenesDiaPorEquipo[id] ?? const _ResumenSimulacionEquipo();
       marcadoresActivos[id] = Marker(
         key: ValueKey('sim_${id}_$_puntero'),
         point: pos,
         width: 80,
         height: 80,
-        child: _buildIcono(id),
+        child: GestureDetector(
+          onTap: () {
+            setState(() {
+              _equipoSeleccionadoId = id;
+            });
+          },
+          child: _buildIcono(id),
+        ),
       );
 
       rastrosCola.putIfAbsent(id, () => []);
@@ -133,7 +175,100 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
       if (rastrosCola[id]!.length > 15) {
         rastrosCola[id]!.removeAt(0);
       }
+
+      _estadoActualEquipos[id] = _EstadoSimulacionEquipo(
+        id: id,
+        nombre: _obtenerEtiquetaEquipo(id),
+        latitud: lat,
+        longitud: lon,
+        tiempo: tiempoActual,
+        velocidadKmh: velocidadKmh,
+        distanciaMetros: distanciaMetros,
+        deltaSegundos: deltaSegundos,
+        velocidadPromedioDiaKmh: resumenDia.velocidadPromedioKmh,
+        kilometrosDia: resumenDia.kilometros,
+        tramosValidosDia: resumenDia.tramosValidos,
+        registro: Map<String, dynamic>.from(punto),
+      );
+
+      _ultimaPosicionEquipo[id] = pos;
+      if (tiempoActual != null) {
+        _ultimoTiempoEquipo[id] = tiempoActual;
+      }
     });
+  }
+
+  Map<String, _ResumenSimulacionEquipo> _calcularResumenesDia(
+    List<Map<String, dynamic>> trayectoria,
+  ) {
+    final porEquipo = <String, List<Map<String, dynamic>>>{};
+
+    for (final punto in trayectoria) {
+      final id = punto['fk_emisor']?.toString();
+      if (id == null || id.isEmpty) continue;
+
+      final lat = (punto['lat_grados'] as num?)?.toDouble();
+      final lon = (punto['lon_grados'] as num?)?.toDouble();
+      final tiempo = _parsearFechaHora(punto['tiempo']);
+
+      if (lat == null || lon == null || tiempo == null) continue;
+      if (lat == 0.0 || lon == 0.0) continue;
+      if (lat < -20 || lat > -10 || lon < -75 || lon > -65) continue;
+
+      porEquipo.putIfAbsent(id, () => []);
+      porEquipo[id]!.add(punto);
+    }
+
+    final resumenes = <String, _ResumenSimulacionEquipo>{};
+
+    for (final entry in porEquipo.entries) {
+      final puntos = [...entry.value]
+        ..sort((a, b) => a['tiempo'].toString().compareTo(b['tiempo'].toString()));
+
+      double kilometros = 0.0;
+      double sumaVelocidades = 0.0;
+      int tramosValidos = 0;
+
+      for (var i = 1; i < puntos.length; i++) {
+        final anterior = puntos[i - 1];
+        final actual = puntos[i];
+
+        final tiempoAnterior = _parsearFechaHora(anterior['tiempo']);
+        final tiempoActual = _parsearFechaHora(actual['tiempo']);
+        if (tiempoAnterior == null || tiempoActual == null) continue;
+
+        final deltaSegundos = tiempoActual.difference(tiempoAnterior).inSeconds;
+        if (deltaSegundos <= 0) continue;
+
+        final p1 = ll.LatLng(
+          (anterior['lat_grados'] as num).toDouble(),
+          (anterior['lon_grados'] as num).toDouble(),
+        );
+        final p2 = ll.LatLng(
+          (actual['lat_grados'] as num).toDouble(),
+          (actual['lon_grados'] as num).toDouble(),
+        );
+
+        final distanciaMetros = _calcularDistanciaMetros(p1, p2);
+        final velocidadKmh = (distanciaMetros / deltaSegundos) * 3.6;
+
+        if (velocidadKmh.isNaN || velocidadKmh.isInfinite) continue;
+        if (velocidadKmh > 120) continue;
+
+        kilometros += distanciaMetros / 1000;
+        sumaVelocidades += velocidadKmh;
+        tramosValidos++;
+      }
+
+      resumenes[entry.key] = _ResumenSimulacionEquipo(
+        kilometros: kilometros,
+        velocidadPromedioKmh:
+            tramosValidos == 0 ? 0.0 : (sumaVelocidades / tramosValidos),
+        tramosValidos: tramosValidos,
+      );
+    }
+
+    return resumenes;
   }
 
   void _togglePlay() {
@@ -290,9 +425,9 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
             children: [
               Expanded(
                 child: FlutterMap(
-                  options: const MapOptions(
-                    initialCenter: ll.LatLng(-15.488405, -70.150497),
-                    initialZoom: 15,
+                  options: MapOptions(
+                    initialCenter: _centroInicial,
+                    initialZoom: MediaQuery.of(context).size.width < 760 ? 14.5 : 15,
                   ),
                   children: [
                     TileLayer(
@@ -314,9 +449,21 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
                   ],
                 ),
               ),
-              _buildPanelInferior(total, sliderValue, sliderMax),
+              _buildPanelInferior(total, sliderValue, sliderMax, MediaQuery.of(context).size.width < 760),
             ],
           ),
+          if (_equipoSeleccionado != null)
+            Positioned(
+              top: 16,
+              left: MediaQuery.of(context).size.width < 760 ? 12 : null,
+              right: 16,
+              child: _buildPanelEquipoSeleccionado(
+                _equipoSeleccionado!,
+                width: (MediaQuery.of(context).size.width - 28)
+                    .clamp(260.0, 420.0)
+                    .toDouble(),
+              ),
+            ),
           if (_cargando)
             Positioned.fill(
               child: ColoredBox(
@@ -331,14 +478,23 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
     );
   }
 
-  Widget _buildPanelInferior(int total, double sliderValue, double sliderMax) {
+  Widget _buildPanelInferior(
+    int total,
+    double sliderValue,
+    double sliderMax,
+    bool isMobile,
+  ) {
     return Container(
       color: const Color(0xE61A1A1A),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
+          Wrap(
+            alignment: WrapAlignment.start,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            runSpacing: 6,
             children: [
               IconButton(
                 onPressed: _retroceder,
@@ -373,12 +529,15 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
                   if (v != null) _cambiarVelocidad(v);
                 },
               ),
-              const Spacer(),
-              Text(
-                _horaActual(),
-                style: const TextStyle(
-                  color: Colors.orange,
-                  fontWeight: FontWeight.w600,
+              if (!isMobile) const Spacer(),
+              Padding(
+                padding: EdgeInsets.only(left: isMobile ? 0 : 8),
+                child: Text(
+                  _horaActual(),
+                  style: const TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -435,15 +594,23 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
   }
 
   Widget _buildIcono(String id) {
-    final nombre = equiposInfo[id]?['codigo_equipo_control']?.toString() ?? id;
+    final nombre = _obtenerEtiquetaEquipo(id);
+    final seleccionado = _equipoSeleccionadoId == id;
+    final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+      nombre: equiposInfo[id]?['nombre']?.toString(),
+      codigo: equiposInfo[id]?['codigo_equipo_control']?.toString(),
+    );
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           decoration: BoxDecoration(
-            color: Color(0xFF06329C),
+            color: const Color(0xFF06329C),
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: Colors.greenAccent),
+            border: Border.all(
+              color: seleccionado ? Colors.orange : Colors.greenAccent,
+              width: seleccionado ? 2 : 1,
+            ),
           ),
           child: Text(
             nombre,
@@ -454,8 +621,252 @@ class _HojaSimulacionState extends State<HojaSimulacion> {
             ),
           ),
         ),
-        const Icon(Icons.local_shipping, color: Colors.greenAccent, size: 35),
+        Icon(iconoEquipo, color: Colors.greenAccent, size: 35),
       ],
     );
   }
+
+  _EstadoSimulacionEquipo? get _equipoSeleccionado {
+    final id = _equipoSeleccionadoId;
+    if (id == null) return null;
+    return _estadoActualEquipos[id];
+  }
+
+  Widget _buildPanelEquipoSeleccionado(
+    _EstadoSimulacionEquipo estado, {
+    double width = 320,
+  }) {
+    final tiempo = estado.tiempo == null
+        ? '--:--:--'
+        : DateFormat('HH:mm:ss').format(estado.tiempo!);
+    final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+      nombre: equiposInfo[estado.id]?['nombre']?.toString(),
+      codigo: equiposInfo[estado.id]?['codigo_equipo_control']?.toString(),
+    );
+
+    return Container(
+      width: width,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.orange, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.start,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            runSpacing: 6,
+            children: [
+              Icon(iconoEquipo, color: Colors.greenAccent, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  estado.nombre,
+                  style: const TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _equipoSeleccionadoId = null;
+                  });
+                },
+                icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                constraints: const BoxConstraints(),
+                padding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _datoPanel('Hora actual', tiempo, Colors.orangeAccent),
+                    _datoPanel(
+                      'Velocidad',
+                      '${estado.velocidadKmh.toStringAsFixed(1)} km/h',
+                      Colors.greenAccent,
+                    ),
+                    _datoPanel(
+                      'Tramo actual',
+                      '${estado.distanciaMetros.toStringAsFixed(1)} m',
+                      Colors.cyanAccent,
+                    ),
+                    _datoPanel(
+                      'Delta tiempo',
+                      '${estado.deltaSegundos}s',
+                      Colors.white,
+                    ),
+                    _datoPanel(
+                      'Lat / Lon',
+                      '${estado.latitud.toStringAsFixed(6)}, ${estado.longitud.toStringAsFixed(6)}',
+                      Colors.white70,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _datoPanel(
+                      'Vel. promedio dia',
+                      '${estado.velocidadPromedioDiaKmh.toStringAsFixed(1)} km/h',
+                      Colors.amberAccent,
+                    ),
+                    _datoPanel(
+                      'Km recorridos dia',
+                      '${estado.kilometrosDia.toStringAsFixed(2)} km',
+                      Colors.lightBlueAccent,
+                    ),
+                    _datoPanel(
+                      'Tramos validos dia',
+                      '${estado.tramosValidosDia}',
+                      Colors.white70,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _datoPanel(String etiqueta, String valor, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            etiqueta,
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            valor,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _obtenerEtiquetaEquipo(String id) {
+    final nombre = equiposInfo[id]?['nombre']?.toString().trim() ?? '';
+    if (nombre.isNotEmpty) return nombre;
+
+    final codigo = equiposInfo[id]?['codigo_equipo_control']?.toString().trim() ?? '';
+    if (codigo.isNotEmpty) return codigo;
+
+    return id;
+  }
+
+  ll.LatLng _resolverCentroInicial(
+    List<Map<String, dynamic>> trayectoria,
+    List<Map<String, dynamic>> ultimasPosiciones,
+  ) {
+    final puntoTrayectoria = _primerPuntoValido(trayectoria);
+    if (puntoTrayectoria != null) return puntoTrayectoria;
+
+    final puntoStream = _primerPuntoValido(ultimasPosiciones);
+    if (puntoStream != null) return puntoStream;
+
+    return puntoTrabajoLatLng;
+  }
+
+  ll.LatLng? _primerPuntoValido(List<Map<String, dynamic>> puntos) {
+    for (final punto in puntos) {
+      final lat = (punto['lat_grados'] as num?)?.toDouble() ?? 0.0;
+      final lon = (punto['lon_grados'] as num?)?.toDouble() ?? 0.0;
+
+      if (lat == 0.0 || lon == 0.0) continue;
+      if (lat < -20 || lat > -10 || lon < -75 || lon > -65) continue;
+
+      return ll.LatLng(lat, lon);
+    }
+
+    return null;
+  }
+
+  DateTime? _parsearFechaHora(dynamic valor) {
+    if (valor is DateTime) return valor;
+    if (valor == null) return null;
+    return DateTime.tryParse(valor.toString());
+  }
+
+  double _calcularDistanciaMetros(ll.LatLng p1, ll.LatLng p2) {
+    const double p = 0.017453292519943295;
+    final double a = 0.5 -
+        math.cos((p2.latitude - p1.latitude) * p) / 2 +
+        math.cos(p1.latitude * p) *
+            math.cos(p2.latitude * p) *
+            (1 - math.cos((p2.longitude - p1.longitude) * p)) / 2;
+
+    return 12742 * math.asin(math.sqrt(a)) * 1000;
+  }
+}
+
+class _EstadoSimulacionEquipo {
+  const _EstadoSimulacionEquipo({
+    required this.id,
+    required this.nombre,
+    required this.latitud,
+    required this.longitud,
+    required this.tiempo,
+    required this.velocidadKmh,
+    required this.distanciaMetros,
+    required this.deltaSegundos,
+    required this.velocidadPromedioDiaKmh,
+    required this.kilometrosDia,
+    required this.tramosValidosDia,
+    required this.registro,
+  });
+
+  final String id;
+  final String nombre;
+  final double latitud;
+  final double longitud;
+  final DateTime? tiempo;
+  final double velocidadKmh;
+  final double distanciaMetros;
+  final int deltaSegundos;
+  final double velocidadPromedioDiaKmh;
+  final double kilometrosDia;
+  final int tramosValidosDia;
+  final Map<String, dynamic> registro;
+}
+
+class _ResumenSimulacionEquipo {
+  const _ResumenSimulacionEquipo({
+    this.kilometros = 0.0,
+    this.velocidadPromedioKmh = 0.0,
+    this.tramosValidos = 0,
+  });
+
+  final double kilometros;
+  final double velocidadPromedioKmh;
+  final int tramosValidos;
 }

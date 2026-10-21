@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
 import 'package:trackmape_sup/core/utilidades/calculadora_geodesica.dart';
 
@@ -13,12 +14,15 @@ class PaginaMapa extends StatefulWidget {
 
 class _PaginaMapaState extends State<PaginaMapa> {
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
+  final MapController _mapController = MapController();
   Map<String, String> mapaCodigos = {};
+  Map<String, String> mapaNombres = {};
 
   DateTime fechaSeleccionada = DateTime.now();
   Map<String, dynamic>? puntoSeleccionado;
   double velocidadCalc = 0.0;
   String tiempoReporte = "";
+  double _zoomActual = 15.0;
 
   @override
   Widget build(BuildContext context) {
@@ -52,17 +56,27 @@ class _PaginaMapaState extends State<PaginaMapa> {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.orange));
 
               final listaEquipos = snapshot.data![0] as List<Map<String, dynamic>>;
+              mapaCodigos.clear();
+              mapaNombres.clear();
               for (var e in listaEquipos) {
                 mapaCodigos[e['id_equipo_control'].toString()] = e['codigo_equipo_control'] ?? "S/N";
+                mapaNombres[e['id_equipo_control'].toString()] = e['nombre']?.toString() ?? "";
               }
 
               final trayectoria = snapshot.data![1] as List<Map<String, dynamic>>;
 
               return FlutterMap(
+                mapController: _mapController,
                 options: MapOptions(
                   initialCenter: const ll.LatLng(-15.4835, -70.1416),
                   initialZoom: 15,
                   onTap: (_, __) => setState(() => puntoSeleccionado = null),
+                  onPositionChanged: (position, hasGesture) {
+                    final nuevoZoom = position.zoom;
+                    if (nuevoZoom == null) return;
+                    if ((nuevoZoom - _zoomActual).abs() < 0.01) return;
+                    setState(() => _zoomActual = nuevoZoom);
+                  },
                 ),
                 children: [
                   TileLayer(urlTemplate: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'),
@@ -182,10 +196,15 @@ class _PaginaMapaState extends State<PaginaMapa> {
     for (var pos in datos.reversed) {
       String id = pos['fk_emisor'].toString();
       if (marcadores.containsKey(id)) continue;
+      final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+        nombre: mapaNombres[id],
+        codigo: mapaCodigos[id],
+      );
 
       marcadores[id] = Marker(
         point: ll.LatLng((pos['lat_grados'] as num).toDouble(), (pos['lon_grados'] as num).toDouble()),
-        width: 65, height: 65,
+        width: _anchoMarcador(),
+        height: _altoMarcador(),
         child: GestureDetector(
           onTap: () => _seleccionarPunto(pos, datos),
           child: Column(
@@ -197,9 +216,20 @@ class _PaginaMapaState extends State<PaginaMapa> {
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: Colors.orange, width: 0.5)
                 ),
-                child: Text(mapaCodigos[id] ?? "...", style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                child: Text(
+                  mapaCodigos[id] ?? "...",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: _tamanoTextoMarcador(),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-              const Icon(Icons.local_shipping, color: Colors.orange, size: 26),
+              Icon(
+                iconoEquipo,
+                color: Colors.orange,
+                size: _tamanoIconoMarcador(),
+              ),
             ],
           ),
         ),
@@ -220,5 +250,25 @@ class _PaginaMapaState extends State<PaginaMapa> {
         color: Colors.orange.withValues(alpha: 0.4),
         strokeWidth: 3
     )).toList();
+  }
+
+  double _tamanoIconoMarcador() {
+    final escalado = 26.0 + ((_zoomActual - 15.0) * 2.0);
+    return escalado.clamp(50.0, 68.0);
+  }
+
+  double _tamanoTextoMarcador() {
+    final escalado = 9.0 + ((_zoomActual - 15.0) * 0.3);
+    return escalado.clamp(8.0, 11.0);
+  }
+
+  double _anchoMarcador() {
+    final icono = _tamanoIconoMarcador();
+    return (icono * 2.4).clamp(120.0, 164.0);
+  }
+
+  double _altoMarcador() {
+    final icono = _tamanoIconoMarcador();
+    return (icono * 2.1).clamp(108.0, 146.0);
   }
 }

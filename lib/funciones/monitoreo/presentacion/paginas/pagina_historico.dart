@@ -1,310 +1,343 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
-import 'package:trackmape_sup/core/mapas/graphhopper/graphhopper_servicio.dart';
+import 'package:trackmape_sup/core/mapas/coordenadas_operacion.dart';
+import 'package:trackmape_sup/core/ui/track_custom_icons.dart';
+import 'package:trackmape_sup/core/utilidades/limpiador_trayectoria.dart';
+import 'package:trackmape_sup/funciones/gis/datos/repositorios/repositorio_gis.dart';
+import 'package:trackmape_sup/funciones/gis/presentacion/widgets/capas_gis_mapa.dart';
+import 'package:trackmape_sup/funciones/monitoreo/datos/modelos/modelo_equipo.dart';
 import 'package:trackmape_sup/funciones/monitoreo/datos/repositorios/repositorio_monitoreo.dart';
-import 'package:trackmape_sup/core/utilidades/calculadora_geodesica.dart';
-import 'dart:math' as math;
+import 'package:trackmape_sup/funciones/monitoreo/dominio/servicios/servicio_metricas_operador.dart';
 
 class PaginaHistorico extends StatefulWidget {
-  const PaginaHistorico({super.key});
+  const PaginaHistorico({
+    super.key,
+    this.equipoIdFiltro,
+    this.nombreEquipoFiltro,
+    this.fechaInicial,
+    this.empresaFiltro,
+  });
+
+  final String? equipoIdFiltro;
+  final String? nombreEquipoFiltro;
+  final DateTime? fechaInicial;
+  final String? empresaFiltro;
 
   @override
   State<PaginaHistorico> createState() => _PaginaHistoricoState();
 }
 
 class _PaginaHistoricoState extends State<PaginaHistorico> {
+  static const Duration _gapMaximoVisualHistorico = Duration(seconds: 20);
+  static const Duration _ventanaSaltoVisualHistorico = Duration(seconds: 12);
+  static const double _velocidadMaximaVisualHistoricoKmh = 90.0;
+  static const double _distanciaMaximaTramoHistoricoMetros = 320.0;
+  static const double _distanciaSaltoVisualHistoricoMetros = 260.0;
+
+  static const List<String> _mesesEspanol = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+
+  static const List<String> _diasSemanaAbreviados = [
+    'L',
+    'M',
+    'M',
+    'J',
+    'V',
+    'S',
+    'D',
+  ];
 
   final RepositorioMonitoreo _repositorio = RepositorioMonitoreo();
+  final RepositorioGis _repositorioGis = RepositorioGis();
+  final LimpiadorTrayectoria _limpiador = const LimpiadorTrayectoria();
+  final ServicioMetricasOperador _servicioMetricas =
+      const ServicioMetricasOperador();
 
-  Map<String, String> mapaCodigos = {};
+  final Map<String, String> mapaEtiquetasEquipos = {};
+  final Map<String, String> mapaNombresEquipos = {};
+  final Map<String, String> mapaCodigosEquipos = {};
 
-  DateTime fechaSeleccionada = DateTime.now();
+  late DateTime fechaSeleccionada;
   Map<String, dynamic>? puntoSeleccionado;
-
+  late Future<_DatosHistoricoVista> _datosHistoricosFuture;
   double velocidadCalc = 0.0;
-  String tiempoReporte = "";
+  String tiempoReporte = '';
+  bool _mostrarAreasGis = true;
+  bool _mostrarRutasGis = true;
 
-  // Rutas corregidas por GraphHopper
-  Map<String, List<ll.LatLng>> _rutasCorregidas = {};
-  bool _corrigiendoRutas = false;
-
-  // ============================================
-  // ⚙️ CONFIGURACIÓN DE FILTROS
-  // ============================================
-  // Distancia máxima permitida entre 2 puntos consecutivos (metros)
-  // Si la distancia es mayor, se considera un salto falso
-  static const double _distanciaMaximaMetros = 500.0;
-
-  // Velocidad máxima permitida (km/h)
-  // Si la velocidad calculada supera esto, es un dato falso
-  static const double _velocidadMaximaKmh = 150.0;
+  @override
+  void initState() {
+    super.initState();
+    fechaSeleccionada = widget.fechaInicial ?? DateTime.now();
+    _datosHistoricosFuture = _cargarDatosHistoricos();
+  }
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 760;
 
-    return Scaffold(
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // BOTÓN DE PRUEBA GRAPHHOPPER (ROUTING API)
-          FloatingActionButton(
-            heroTag: "testGH",
-            backgroundColor: Colors.green,
-            child: const Icon(Icons.route, color: Colors.white),
-            onPressed: () async {
-              print("🧪 PRUEBA: GraphHopper Routing API...");
-
-              // Puntos en Juliaca, Perú
-              final puntosPrueba = [
-                ll.LatLng(-15.4935, -70.1285),  // Inicio
-                ll.LatLng(-15.4993, -70.1241),  // Fin
-              ];
-
-              print("📍 Ruta: ${puntosPrueba.first} → ${puntosPrueba.last}");
-
-              try {
-                final resultado = await GraphhopperServicio.corregirRuta(puntosPrueba);
-
-                if (resultado != null && resultado.isNotEmpty) {
-                  print("✅ ÉXITO: ${resultado.length} puntos en la ruta");
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("✅ Ruta calculada: ${resultado.length} puntos"),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-                } else {
-                  print("⚠️ GraphHopper retornó vacío");
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("⚠️ No se pudo calcular la ruta"),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                }
-              } catch (e) {
-                print("❌ Error: $e");
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text("❌ Error: $e"),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          // Botón calendario original
-          FloatingActionButton(
-            heroTag: "calendar",
-            backgroundColor: Colors.orange,
-            child: const Icon(Icons.calendar_month, color: Colors.black),
-            onPressed: () async {
-
-              DateTime? picker = await showDatePicker(
-                context: context,
-                initialDate: fechaSeleccionada,
-                firstDate: DateTime(2025),
-                lastDate: DateTime.now(),
-              );
-
-              if (picker != null) {
-                setState(() {
-                  fechaSeleccionada = picker;
-                  puntoSeleccionado = null;
-                  _rutasCorregidas.clear();
-                });
-              }
-
-            },
-          ),
-        ],
-      ),
-
-      body: Stack(
-        children: [
-
-          FutureBuilder(
-            future: Future.wait([
-              _repositorio.obtenerEquiposRaw(),
-              _repositorio.obtenerTrayectoriaPorFecha(fechaSeleccionada),
-            ]),
-            builder: (context, AsyncSnapshot<List<dynamic>> snapshot) {
-
-              if (!snapshot.hasData) {
-                return const Center(
-                    child: CircularProgressIndicator(color: Colors.orange));
-              }
-
-              final listaEquipos = snapshot.data![0] as List<Map<String, dynamic>>;
-
-              for (var e in listaEquipos) {
-                mapaCodigos[e['id_equipo_control'].toString()] =
-                    e['codigo_equipo_control'] ?? "S/N";
-              }
-
-              final trayectoriaRaw =
-              snapshot.data![1] as List<Map<String, dynamic>>;
-
-              // ============================================
-              // 🧹 FILTRAR DATOS INVÁLIDOS
-              // ============================================
-              List<Map<String, dynamic>> trayectoria = _filtrarDatosValidos(trayectoriaRaw);
-
-              trayectoria.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
-
-              // 🗺️ Preparar rutas y llamar a GraphHopper
-              final rutasPorEquipo = _prepararRutasPorEquipo(trayectoria);
-              if (_rutasCorregidas.isEmpty && rutasPorEquipo.isNotEmpty) {
-                // Llamar a GraphHopper en segundo plano
-                Future.microtask(() => _corregirRutasConGraphHopper(rutasPorEquipo));
-              }
-
-              return FlutterMap(
-                options: MapOptions(
-                  initialCenter: const ll.LatLng(-15.488405, -70.150497),
-                  initialZoom: 15,
-                  onTap: (_, __) => setState(() => puntoSeleccionado = null),
-                ),
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) return;
+            _cerrarHistorico();
+          },
+          child: Scaffold(
+            body: SafeArea(
+              child: Stack(
                 children: [
+                  FutureBuilder<_DatosHistoricoVista>(
+                    future: _datosHistoricosFuture,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.orange,
+                          ),
+                        );
+                      }
 
-                  TileLayer(
-                      urlTemplate:
-                      'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'),
+                      final datosVista = snapshot.data!;
+                      final capasGis = construirCapasGisMapa(
+                        datosVista.datosGis,
+                        mostrarAreas: _mostrarAreasGis,
+                        mostrarRutas: _mostrarRutasGis,
+                      );
+                      mapaEtiquetasEquipos.clear();
+                      mapaNombresEquipos.clear();
+                      mapaCodigosEquipos.clear();
+                      for (final equipo in datosVista.equiposPorId.values) {
+                        final id = equipo.id;
+                        final nombre = equipo.nombre?.trim() ?? '';
+                        final codigo = equipo.codigo?.trim() ?? '';
+                        mapaNombresEquipos[id] = nombre;
+                        mapaCodigosEquipos[id] = codigo;
+                        mapaEtiquetasEquipos[id] = nombre.isNotEmpty
+                            ? nombre
+                            : (codigo.isNotEmpty ? codigo : 'S/N');
+                      }
 
-                  PolylineLayer(
-                    polylines: _generarLineas(trayectoria),
+                      return FlutterMap(
+                        options: MapOptions(
+                          initialCenter: puntoTrabajoLatLng,
+                          initialZoom: isMobile ? 14.5 : 15,
+                          onTap: (_, __) =>
+                              setState(() => puntoSeleccionado = null),
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate:
+                                'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+                          ),
+                          if (capasGis.poligonos.isNotEmpty)
+                            PolygonLayer(polygons: capasGis.poligonos),
+                          if (capasGis.rutas.isNotEmpty)
+                            PolylineLayer(polylines: capasGis.rutas),
+                          PolylineLayer(
+                            polylines: _generarLineas(
+                              datosVista.resultadosPorEquipo,
+                            ),
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              ...capasGis.marcadores,
+                              ..._construirMarcadores(
+                                datosVista.resultadosPorEquipo,
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
                   ),
-
-                  MarkerLayer(
-                    markers: _construirMarcadores(trayectoria),
+                  Positioned(
+                    top: 20,
+                    left: 20,
+                    right: 20,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (widget.equipoIdFiltro != null) ...[
+                          _buildFloatingBackButton(),
+                          const SizedBox(width: 10),
+                        ],
+                        _buildMiniCalendarCard(isMobile: isMobile),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildHistoricoInfoCard(isMobile: isMobile),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (puntoSeleccionado != null)
+                    _buildPanelInfo(isMobile: isMobile),
+                  Positioned(
+                    top: isMobile ? 148 : 20,
+                    right: 20,
+                    child: _buildSelectorCapasGis(isMobile: isMobile),
                   ),
                 ],
-              );
-            },
-          ),
-
-          Positioned(
-            top: 20,
-            left: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.orange),
-              ),
-              child: Text(
-                "Fecha: ${fechaSeleccionada.day}/${fechaSeleccionada.month}/${fechaSeleccionada.year}",
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-
-          if (puntoSeleccionado != null) _buildPanelInfo(),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  // ============================================
-  // 🧹 FILTRAR DATOS INVÁLIDOS
-  // ============================================
-  List<Map<String, dynamic>> _filtrarDatosValidos(List<Map<String, dynamic>> datos) {
-
-    List<Map<String, dynamic>> datosFiltrados = [];
-
-    for (var punto in datos) {
-      final lat = (punto['lat_grados'] as num?)?.toDouble() ?? 0.0;
-      final lon = (punto['lon_grados'] as num?)?.toDouble() ?? 0.0;
-
-      // ============================================
-      // ❌ FILTRO 1: Coordenadas inválidas
-      // ============================================
-      // Descartar si lat/lon son 0, null, o fuera de rango
-      if (lat == 0.0 || lon == 0.0) continue;
-      if (lat < -90 || lat > 90) continue;
-      if (lon < -180 || lon > 180) continue;
-
-      // ============================================
-      // ❌ FILTRO 2: Coordenadas muy lejos de Perú
-      // ============================================
-      // Tu zona de trabajo está aproximadamente en:
-      // Lat: -18 a -12 (sur de Perú)
-      // Lon: -72 a -68 (departamento de Puno)
-      // Si está muy fuera de este rango, es dato falso
-      if (lat < -20 || lat > -10) continue;
-      if (lon < -75 || lon > -65) continue;
-
-      datosFiltrados.add(punto);
+  Future<_DatosHistoricoVista> _cargarDatosHistoricos() async {
+    final empresaFiltro =
+        widget.empresaFiltro ?? RepositorioMonitoreo.empresaMonitoreoFija;
+    final equiposRaw = await _repositorio.obtenerEquiposRaw(
+      tipoEquipoControl: RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
+      fkEmpresa: empresaFiltro,
+      fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
+    );
+    final equiposPorId = <String, ModeloEquipo>{};
+    for (final equipo in equiposRaw) {
+      final modelo = ModeloEquipo.fromJson(equipo);
+      equiposPorId[modelo.id] = modelo;
     }
 
-    return datosFiltrados;
+    final trayectoriaRaw = await _repositorio.obtenerTrayectoriaPorFecha(
+      fechaSeleccionada,
+      tipoEquipoControl: RepositorioMonitoreo.tipoEquipoSeeedWioTrackerL1,
+      fkEmpresa: empresaFiltro,
+      fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
+    );
+    final trayectoriaFiltrada = widget.equipoIdFiltro == null
+        ? trayectoriaRaw
+        : trayectoriaRaw
+              .where(
+                (punto) =>
+                    punto['fk_emisor']?.toString() == widget.equipoIdFiltro,
+              )
+              .toList();
+
+    final datosPorEquipo = <String, List<Map<String, dynamic>>>{};
+    for (final punto in trayectoriaFiltrada) {
+      final id = punto['fk_emisor']?.toString();
+      if (id == null || id.isEmpty) continue;
+      datosPorEquipo.putIfAbsent(id, () => []);
+      datosPorEquipo[id]!.add(punto);
+    }
+
+    final resultadosPorEquipo = <String, ResultadoProcesadoOperador>{};
+    for (final entry in datosPorEquipo.entries) {
+      final equipo =
+          equiposPorId[entry.key] ??
+          ModeloEquipo(
+            id: entry.key,
+            nombre: mapaNombresEquipos[entry.key],
+            codigo: mapaCodigosEquipos[entry.key],
+          );
+      resultadosPorEquipo[entry.key] = _servicioMetricas.procesarDatosUnidad(
+        equipo: equipo,
+        puntosCrudos: entry.value,
+      );
+    }
+
+    final datosGis = await _repositorioGis.obtenerDatosOperativos(
+      fkEmpresa: empresaFiltro,
+      fkSede: RepositorioMonitoreo.sedeMonitoreoFija,
+    );
+
+    return _DatosHistoricoVista(
+      equiposPorId: equiposPorId,
+      resultadosPorEquipo: resultadosPorEquipo,
+      datosGis: datosGis,
+    );
   }
 
-  // ============================================
-  // 📏 CALCULAR DISTANCIA ENTRE 2 PUNTOS
-  // ============================================
-  double _calcularDistanciaMetros(ll.LatLng p1, ll.LatLng p2) {
-    const double p = 0.017453292519943295;
-    final double a = 0.5 -
-        math.cos((p2.latitude - p1.latitude) * p) / 2 +
-        math.cos(p1.latitude * p) * math.cos(p2.latitude * p) *
-            (1 - math.cos((p2.longitude - p1.longitude) * p)) / 2;
-
-    return 12742 * math.asin(math.sqrt(a)) * 1000;
+  void _cerrarHistorico() {
+    Navigator.of(context).pop<DateTime>(fechaSeleccionada);
   }
 
-  void _seleccionarPunto(
-      Map<String, dynamic> actual, List<Map<String, dynamic>> historialCompleto) {
+  bool _esMismoDia(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  void _seleccionarFechaHistorica(DateTime nuevaFecha) {
+    final fechaNormalizada = DateTime(
+      nuevaFecha.year,
+      nuevaFecha.month,
+      nuevaFecha.day,
+    );
+    final hoy = DateTime.now();
+    final limiteSuperior = DateTime(hoy.year, hoy.month, hoy.day);
+    final limiteInferior = DateTime(2024, 1, 1);
+
+    if (fechaNormalizada.isAfter(limiteSuperior) ||
+        fechaNormalizada.isBefore(limiteInferior)) {
+      return;
+    }
 
     setState(() {
-
-      puntoSeleccionado = actual;
-
-      DateTime hora = DateTime.parse(actual['tiempo']);
-
-      Duration diff = DateTime.now().difference(hora);
-
-      tiempoReporte = diff.inMinutes > 60
-          ? "${diff.inHours}h ${diff.inMinutes % 60}m"
-          : "${diff.inMinutes} min";
-
-      final historialEmisor = historialCompleto
-          .where((p) => p['fk_emisor'] == actual['fk_emisor'])
-          .toList();
-
-      historialEmisor.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
-
-      int idx = historialEmisor.indexOf(actual);
-
-      if (idx > 0) {
-
-        final anterior = historialEmisor[idx - 1];
-
-        velocidadCalc = CalculadoraGeodesica.calcularVelocidad(
-          (anterior['lat_grados'] as num).toDouble(),
-          (anterior['lon_grados'] as num).toDouble(),
-          DateTime.parse(anterior['tiempo']),
-          (actual['lat_grados'] as num).toDouble(),
-          (actual['lon_grados'] as num).toDouble(),
-          DateTime.parse(actual['tiempo']),
-        );
-
-      } else {
-
-        velocidadCalc = 0.0;
-
-      }
-
+      fechaSeleccionada = fechaNormalizada;
+      puntoSeleccionado = null;
+      _datosHistoricosFuture = _cargarDatosHistoricos();
     });
   }
 
-  Widget _buildPanelInfo() {
+  void _cambiarMesVisible(int deltaMeses) {
+    final mesActual = DateTime(fechaSeleccionada.year, fechaSeleccionada.month);
+    final nuevoMes = DateTime(mesActual.year, mesActual.month + deltaMeses, 1);
+    final ultimoDiaMes = _diasEnMes(nuevoMes.year, nuevoMes.month);
+    final nuevoDia = fechaSeleccionada.day.clamp(1, ultimoDiaMes);
 
+    _seleccionarFechaHistorica(
+      DateTime(nuevoMes.year, nuevoMes.month, nuevoDia),
+    );
+  }
+
+  void _seleccionarPunto(
+    Map<String, dynamic> actual,
+    List<Map<String, dynamic>> historialCompleto,
+  ) {
+    setState(() {
+      puntoSeleccionado = actual;
+
+      final hora = DateTime.parse(actual['tiempo']);
+      final diff = DateTime.now().difference(hora);
+      tiempoReporte = diff.inMinutes > 60
+          ? '${diff.inHours}h ${diff.inMinutes % 60}m'
+          : '${diff.inMinutes} min';
+
+      final historialEmisor =
+          historialCompleto
+              .where((p) => p['fk_emisor'] == actual['fk_emisor'])
+              .toList()
+            ..sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
+
+      final idx = historialEmisor.indexOf(actual);
+      if (idx > 0) {
+        final anterior = historialEmisor[idx - 1];
+        velocidadCalc = _limpiador.velocidadKmh(
+          _mapToPunto(anterior),
+          _mapToPunto(actual),
+        );
+      } else {
+        velocidadCalc = 0.0;
+      }
+    });
+  }
+
+  Widget _buildPanelInfo({bool isMobile = false}) {
     return Align(
       alignment: Alignment.bottomCenter,
       child: Container(
@@ -318,47 +351,48 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-                Text(
-                    "UNIDAD: ${mapaCodigos[puntoSeleccionado!['fk_emisor'].toString()] ?? 'S/N'}",
-                    style: const TextStyle(
-                        color: Colors.orange,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold)),
-
+                Expanded(
+                  child: Text(
+                    'UNIDAD: ${mapaEtiquetasEquipos[puntoSeleccionado!['fk_emisor'].toString()] ?? 'S/N'}',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: isMobile ? 16 : 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () =>
-                      setState(() => puntoSeleccionado = null),
-                )
+                  onPressed: () => setState(() => puntoSeleccionado = null),
+                ),
               ],
             ),
-
             const Divider(color: Colors.white24),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            Wrap(
+              alignment: WrapAlignment.spaceAround,
+              spacing: 16,
+              runSpacing: 10,
               children: [
-                _dato("Lat (X)", puntoSeleccionado!['lat_grados'].toString()),
-                _dato("Lon (Y)", puntoSeleccionado!['lon_grados'].toString()),
-                _dato("Alt (Z)", "${puntoSeleccionado!['alt_msnm'] ?? 'N/A'}m"),
+                _dato('Lat (X)', puntoSeleccionado!['lat_grados'].toString()),
+                _dato('Lon (Y)', puntoSeleccionado!['lon_grados'].toString()),
+                _dato('Alt (Z)', '${puntoSeleccionado!['alt_msnm'] ?? 'N/A'}m'),
               ],
             ),
-
             const SizedBox(height: 10),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            Wrap(
+              alignment: WrapAlignment.spaceAround,
+              spacing: 16,
+              runSpacing: 10,
               children: [
-                _dato("Velocidad",
-                    "${velocidadCalc.toStringAsFixed(1)} km/h",
-                    color: Colors.greenAccent),
-                _dato("Tiempo", tiempoReporte,
-                    color: Colors.blueAccent),
+                _dato(
+                  'Velocidad',
+                  '${velocidadCalc.toStringAsFixed(1)} km/h',
+                  color: Colors.greenAccent,
+                ),
+                _dato('Tiempo', tiempoReporte, color: Colors.blueAccent),
               ],
             ),
           ],
@@ -367,25 +401,337 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
     );
   }
 
-  Widget _dato(String t, String v, {Color color = Colors.white}) => Column(
-    children: [
-      Text(t,
-          style: const TextStyle(color: Colors.grey, fontSize: 10)),
-      Text(v,
+  Widget _dato(String t, String v, {Color color = Colors.white}) {
+    return Column(
+      children: [
+        Text(t, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+        Text(
+          v,
           style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-              fontSize: 13)),
-    ],
-  );
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+      ],
+    );
+  }
 
-  List<Marker> _construirMarcadores(List<Map<String, dynamic>> datos) {
+  Widget _buildSelectorCapasGis({required bool isMobile}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.78),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildBotonCapaGis(
+            texto: 'Areas',
+            activo: _mostrarAreasGis,
+            color: Colors.orangeAccent,
+            onTap: () => setState(() => _mostrarAreasGis = !_mostrarAreasGis),
+          ),
+          const SizedBox(width: 6),
+          _buildBotonCapaGis(
+            texto: 'Rutas',
+            activo: _mostrarRutasGis,
+            color: Colors.cyanAccent,
+            onTap: () => setState(() => _mostrarRutasGis = !_mostrarRutasGis),
+          ),
+        ],
+      ),
+    );
+  }
 
-    Map<String, Marker> marcadoresUltimaPosicion = {};
+  Widget _buildBotonCapaGis({
+    required String texto,
+    required bool activo,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: activo ? color.withOpacity(0.18) : Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: activo ? color : Colors.white30),
+        ),
+        child: Text(
+          texto,
+          style: TextStyle(
+            color: activo ? color : Colors.white54,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
 
-    for (var pos in datos) {
+  Widget _buildFloatingBackButton() {
+    return Material(
+      color: Colors.black.withOpacity(0.82),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: _cerrarHistorico,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.orange.withOpacity(0.75)),
+          ),
+          child: const Icon(Icons.arrow_back, color: Colors.orange),
+        ),
+      ),
+    );
+  }
 
-      String id = pos['fk_emisor'].toString();
+  Widget _buildMiniCalendarCard({required bool isMobile}) {
+    final ancho = isMobile ? 142.0 : 168.0;
+    final mesVisible = DateTime(
+      fechaSeleccionada.year,
+      fechaSeleccionada.month,
+      1,
+    );
+    final offsetInicio = _indiceInicioMes(mesVisible);
+    final totalDias = _diasEnMes(mesVisible.year, mesVisible.month);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {},
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: ancho,
+          padding: EdgeInsets.fromLTRB(12, isMobile ? 10 : 12, 12, 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.94),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.indigo.shade200, width: 1.2),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () => _cambiarMesVisible(-1),
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.chevron_left,
+                        color: Color(0xFF3F51B5),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          _mesesEspanol[mesVisible.month - 1],
+                          style: TextStyle(
+                            color: Colors.indigo.shade700,
+                            fontSize: isMobile ? 14 : 15,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        Text(
+                          '${mesVisible.year}',
+                          style: TextStyle(
+                            color: Colors.indigo.shade700,
+                            fontSize: isMobile ? 10 : 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _cambiarMesVisible(1),
+                    borderRadius: BorderRadius.circular(20),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.chevron_right,
+                        color: Color(0xFF3F51B5),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: _diasSemanaAbreviados
+                    .map(
+                      (dia) => Expanded(
+                        child: Text(
+                          dia,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: isMobile ? 10 : 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const SizedBox(height: 4),
+              GridView.builder(
+                itemCount: offsetInicio + totalDias,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 7,
+                  mainAxisSpacing: 2,
+                  crossAxisSpacing: 2,
+                  childAspectRatio: 1.15,
+                ),
+                itemBuilder: (context, index) {
+                  if (index < offsetInicio) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final dia = index - offsetInicio + 1;
+                  final fechaDia = DateTime(
+                    mesVisible.year,
+                    mesVisible.month,
+                    dia,
+                  );
+                  final seleccionado = _esMismoDia(fechaDia, fechaSeleccionada);
+                  final hoy = _esMismoDia(fechaDia, DateTime.now());
+                  final habilitado = !_fechaFueraDeRango(fechaDia);
+
+                  return InkWell(
+                    onTap: habilitado
+                        ? () => _seleccionarFechaHistorica(fechaDia)
+                        : null,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: seleccionado
+                            ? const Color(0xFF3F51B5)
+                            : (hoy
+                                  ? const Color(0xFFE8EAF6)
+                                  : Colors.transparent),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '$dia',
+                        style: TextStyle(
+                          color: !habilitado
+                              ? Colors.black26
+                              : (seleccionado ? Colors.white : Colors.black87),
+                          fontSize: isMobile ? 10.5 : 11.5,
+                          fontWeight: seleccionado
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoricoInfoCard({required bool isMobile}) {
+    final fechaTexto =
+        '${fechaSeleccionada.day.toString().padLeft(2, '0')}/${fechaSeleccionada.month.toString().padLeft(2, '0')}/${fechaSeleccionada.year}';
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 12 : 14,
+        vertical: isMobile ? 10 : 12,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.orange),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.nombreEquipoFiltro?.isNotEmpty == true
+                ? widget.nombreEquipoFiltro!
+                : 'Consulta historica',
+            style: TextStyle(
+              color: Colors.orange,
+              fontSize: isMobile ? 13 : 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Fecha seleccionada: $fechaTexto',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isMobile ? 12 : 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Toca un dia del calendario para recargar el mapa.',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Marker> _construirMarcadores(
+    Map<String, ResultadoProcesadoOperador> resultadosPorEquipo,
+  ) {
+    final marcadoresUltimaPosicion = <String, Marker>{};
+
+    for (final entry in resultadosPorEquipo.entries) {
+      final id = entry.key;
+      final limpios = entry.value.puntosLimpios
+          .map((punto) => punto.payload)
+          .toList();
+      final pos = limpios.isNotEmpty ? limpios.last : null;
+      if (pos == null) {
+        continue;
+      }
+      final iconoEquipo = TrackCustomIcons.iconoPorEquipo(
+        nombre: mapaNombresEquipos[id],
+        codigo: mapaCodigosEquipos[id],
+      );
 
       marcadoresUltimaPosicion[id] = Marker(
         point: ll.LatLng(
@@ -395,10 +741,9 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
         width: 65,
         height: 65,
         child: GestureDetector(
-          onTap: () => _seleccionarPunto(pos, datos),
+          onTap: () => _seleccionarPunto(pos, limpios),
           child: Column(
             children: [
-
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
@@ -407,18 +752,15 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
                   border: Border.all(color: Colors.orange, width: 0.5),
                 ),
                 child: Text(
-                    mapaCodigos[id] ?? "...",
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold)),
+                  mapaEtiquetasEquipos[id] ?? '...',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-
-              const Icon(
-                Icons.local_shipping,
-                color: Color(0xFF06329C),
-                size: 26,
-              ),
+              Icon(iconoEquipo, color: Color(0xFF06329C), size: 26),
             ],
           ),
         ),
@@ -428,162 +770,144 @@ class _PaginaHistoricoState extends State<PaginaHistorico> {
     return marcadoresUltimaPosicion.values.toList();
   }
 
-  // ============================================
-  // 📊 PREPARAR RUTAS POR EQUIPO (para GraphHopper)
-  // ============================================
-  Map<String, List<ll.LatLng>> _prepararRutasPorEquipo(List<Map<String, dynamic>> pos) {
-    Map<String, List<ll.LatLng>> rutasPorEquipo = {};
-    Map<String, List<Map<String, dynamic>>> datosPorEquipo = {};
+  List<Polyline> _generarLineas(
+    Map<String, ResultadoProcesadoOperador> resultadosPorEquipo,
+  ) {
+    final polilineas = <Polyline>[];
 
-    for (var p in pos) {
-      String id = p['fk_emisor'].toString();
-      datosPorEquipo.putIfAbsent(id, () => []);
-      datosPorEquipo[id]!.add(p);
-    }
-
-    for (var entry in datosPorEquipo.entries) {
-      final id = entry.key;
-      final puntos = entry.value;
-      puntos.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
-
-      List<ll.LatLng> ruta = [];
-      for (var p in puntos) {
-        final lat = (p['lat_grados'] as num).toDouble();
-        final lon = (p['lon_grados'] as num).toDouble();
-        ruta.add(ll.LatLng(lat, lon));
-      }
-
-      if (ruta.isNotEmpty) {
-        rutasPorEquipo[id] = ruta;
-      }
-    }
-
-    return rutasPorEquipo;
-  }
-
-  List<Polyline> _generarLineas(List<Map<String, dynamic>> pos) {
-
-    Map<String, List<ll.LatLng>> rutasPorEquipo = {};
-
-    // Agrupar por equipo
-    Map<String, List<Map<String, dynamic>>> datosPorEquipo = {};
-    for (var p in pos) {
-      String id = p['fk_emisor'].toString();
-      datosPorEquipo.putIfAbsent(id, () => []);
-      datosPorEquipo[id]!.add(p);
-    }
-
-    // Procesar cada equipo y filtrar saltos imposibles
-    for (var entry in datosPorEquipo.entries) {
-      final id = entry.key;
-      final puntos = entry.value;
-
-      // Ordenar por tiempo
-      puntos.sort((a, b) => a['tiempo'].compareTo(b['tiempo']));
-
-      List<ll.LatLng> rutaFiltrada = [];
-      ll.LatLng? puntoAnterior;
-      DateTime? tiempoAnterior;
-
-      for (var p in puntos) {
-        final lat = (p['lat_grados'] as num).toDouble();
-        final lon = (p['lon_grados'] as num).toDouble();
-        final tiempo = DateTime.parse(p['tiempo']);
-        final puntoActual = ll.LatLng(lat, lon);
-
-        if (puntoAnterior != null && tiempoAnterior != null) {
-          // Calcular distancia y tiempo entre puntos
-          final distancia = _calcularDistanciaMetros(puntoAnterior, puntoActual);
-          final segundos = tiempo.difference(tiempoAnterior).inSeconds.abs();
-
-          // Calcular velocidad (evitar división por 0)
-          final velocidad = segundos > 0 ? (distancia / segundos) * 3.6 : 0.0;
-
-          // ============================================
-          // ❌ FILTRO: Salto imposible
-          // ============================================
-          // Si la distancia es mayor a 500m O la velocidad > 150 km/h
-          // consideramos que es un dato falso y NO lo agregamos
-          if (distancia > _distanciaMaximaMetros || velocidad > _velocidadMaximaKmh) {
-            // Salto detectado - no conectar con línea
-            // Pero sí agregar el punto actual como inicio de nuevo segmento
-            if (rutaFiltrada.isNotEmpty) {
-              // Guardar ruta actual y empezar nueva
-              rutasPorEquipo.putIfAbsent(id, () => []);
-              rutasPorEquipo[id]!.addAll(rutaFiltrada);
-            }
-            rutaFiltrada = [puntoActual];
-          } else {
-            // Punto válido - agregar a la ruta
-            rutaFiltrada.add(puntoActual);
-          }
-        } else {
-          // Primer punto
-          rutaFiltrada.add(puntoActual);
-        }
-
-        puntoAnterior = puntoActual;
-        tiempoAnterior = tiempo;
-      }
-
-      // Agregar última ruta
-      if (rutaFiltrada.isNotEmpty) {
-        rutasPorEquipo.putIfAbsent(id, () => []);
-        rutasPorEquipo[id]!.addAll(rutaFiltrada);
-      }
-    }
-
-    return rutasPorEquipo.entries.map((e) {
-      // Usar ruta corregida si existe, sino usar la original
-      final puntos = _rutasCorregidas[e.key] ?? e.value;
-
-      return Polyline(
-        points: puntos,
-        color: Colors.orange.withOpacity(0.7),
-        strokeWidth: 4,
+    for (final entry in resultadosPorEquipo.entries) {
+      final segmentos = _segmentarRutaValida(
+        entry.value.segmentosReconstruidos,
       );
 
-    }).toList();
-  }
-
-  // ============================================
-  // 🗺️ CORREGIR RUTAS CON GRAPHHOPPER
-  // ============================================
-  Future<void> _corregirRutasConGraphHopper(Map<String, List<ll.LatLng>> rutasPorEquipo) async {
-    if (_corrigiendoRutas) return;
-
-    _corrigiendoRutas = true;
-
-    for (var entry in rutasPorEquipo.entries) {
-      final idEquipo = entry.key;
-      final puntos = entry.value;
-
-      // Solo corregir si hay suficientes puntos
-      if (puntos.length >= 2) {
-        try {
-          print("🗺️ GraphHopper: Corrigiendo ruta de $idEquipo (${puntos.length} puntos)...");
-
-          final puntosCorregidos = await GraphhopperServicio.corregirRuta(puntos);
-
-          if (puntosCorregidos != null && puntosCorregidos.isNotEmpty) {
-            _rutasCorregidas[idEquipo] = puntosCorregidos;
-            print("✅ GraphHopper: Ruta corregida para $idEquipo (${puntosCorregidos.length} puntos)");
-          } else {
-            print("⚠️ GraphHopper: Sin corrección para $idEquipo, usando original");
-            _rutasCorregidas[idEquipo] = puntos;
-          }
-        } catch (e) {
-          print("❌ GraphHopper Error: $e");
-          _rutasCorregidas[idEquipo] = puntos;
+      for (final segmento in segmentos) {
+        if (segmento.length < 2) {
+          continue;
         }
+
+        polilineas.add(
+          Polyline(
+            points: segmento,
+            color: Colors.orange.withOpacity(0.7),
+            strokeWidth: 4,
+          ),
+        );
       }
     }
 
-    _corrigiendoRutas = false;
-
-    // Actualizar UI con las rutas corregidas
-    if (mounted) {
-      setState(() {});
-    }
+    return polilineas;
   }
+
+  List<List<ll.LatLng>> _segmentarRutaValida(
+    List<List<PuntoTrayectoria<Map<String, dynamic>>>> segmentos,
+  ) {
+    final segmentosVisibles = <List<ll.LatLng>>[];
+
+    for (final segmento in segmentos) {
+      if (segmento.length < 2) continue;
+
+      var actual = <ll.LatLng>[
+        ll.LatLng(segmento.first.latitud, segmento.first.longitud),
+      ];
+
+      for (var i = 1; i < segmento.length; i++) {
+        final anterior = segmento[i - 1];
+        final siguiente = segmento[i];
+        final puntoSiguiente = ll.LatLng(siguiente.latitud, siguiente.longitud);
+
+        if (_tramoHistoricoVisible(anterior, siguiente)) {
+          actual.add(puntoSiguiente);
+          continue;
+        }
+
+        if (actual.length >= 2) {
+          segmentosVisibles.add(actual);
+        }
+        actual = [puntoSiguiente];
+      }
+
+      if (actual.length >= 2) {
+        segmentosVisibles.add(actual);
+      }
+    }
+
+    return segmentosVisibles;
+  }
+
+  bool _tramoHistoricoVisible(
+    PuntoTrayectoria<Map<String, dynamic>> anterior,
+    PuntoTrayectoria<Map<String, dynamic>> siguiente,
+  ) {
+    final deltaSegundos = siguiente.tiempo
+        .difference(anterior.tiempo)
+        .inSeconds;
+    if (deltaSegundos <= 0 ||
+        deltaSegundos > _gapMaximoVisualHistorico.inSeconds) {
+      return false;
+    }
+
+    final distancia = _limpiador.distanciaMetros(
+      anterior.latitud,
+      anterior.longitud,
+      siguiente.latitud,
+      siguiente.longitud,
+    );
+    final velocidad = (distancia / deltaSegundos) * 3.6;
+
+    if (velocidad.isNaN ||
+        velocidad.isInfinite ||
+        velocidad > _velocidadMaximaVisualHistoricoKmh) {
+      return false;
+    }
+
+    if (distancia > _distanciaMaximaTramoHistoricoMetros) {
+      return false;
+    }
+
+    if (deltaSegundos <= _ventanaSaltoVisualHistorico.inSeconds &&
+        distancia > _distanciaSaltoVisualHistoricoMetros) {
+      return false;
+    }
+
+    return true;
+  }
+
+  PuntoTrayectoria<Map<String, dynamic>> _mapToPunto(
+    Map<String, dynamic> punto,
+  ) {
+    return PuntoTrayectoria<Map<String, dynamic>>(
+      latitud: (punto['lat_grados'] as num).toDouble(),
+      longitud: (punto['lon_grados'] as num).toDouble(),
+      tiempo: DateTime.parse(punto['tiempo']),
+      payload: punto,
+    );
+  }
+
+  bool _fechaFueraDeRango(DateTime fecha) {
+    final hoy = DateTime.now();
+    final limiteSuperior = DateTime(hoy.year, hoy.month, hoy.day);
+    final limiteInferior = DateTime(2024, 1, 1);
+    return fecha.isAfter(limiteSuperior) || fecha.isBefore(limiteInferior);
+  }
+
+  int _diasEnMes(int year, int month) {
+    return DateTime(year, month + 1, 0).day;
+  }
+
+  int _indiceInicioMes(DateTime fechaMes) {
+    final weekday = fechaMes.weekday;
+    return weekday - 1;
+  }
+}
+
+class _DatosHistoricoVista {
+  final Map<String, ModeloEquipo> equiposPorId;
+  final Map<String, ResultadoProcesadoOperador> resultadosPorEquipo;
+  final DatosGisOperativos datosGis;
+
+  const _DatosHistoricoVista({
+    required this.equiposPorId,
+    required this.resultadosPorEquipo,
+    required this.datosGis,
+  });
 }
